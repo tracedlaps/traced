@@ -1,0 +1,14 @@
+Type: grilling
+Status: resolved
+
+## Question
+
+Design `speedometer::Speedometer`'s internal metrics computation: it implements `FixConsumer` (decided in [Fix fan-out: Recorder + FixConsumer](04-fix-fanout-recorder.md)) and runs independently of any `Track`/`Session`. What state does it accumulate per fix, and what does its poll-able snapshot expose — current speed, top speed, distance travelled, average speed, others? How is distance-travelled integrated between fixes (reuse the flat local-plane math from [Track geometry & gate/sector model](01-track-geometry-model.md)), and how does it handle GPS noise/gaps (does it need its own version of the monotonic/gap-flag reasoning from [GPS-fix correlation algorithm](02-correlator-algorithm.md), or is it simpler since there's no gate-crossing involved)?
+
+## Answer
+
+- **Distance integration**: `speed_ms × dt` (using the GPS-reported speed field), not geometric position-differencing. Position-diff would double as the "same math as `Track`'s `Polyline`" but is exact only for real movement — GPS position jitters a few meters even at rest, silently accumulating phantom distance. Device-reported `speed_ms` (typically Doppler-derived) is much cleaner near zero, so this sidesteps the stationary-drift problem without needing any position-based noise filtering. This is also *why* Speedometer is simpler than the Correlator: Correlator needs position (which gate line was crossed), Speedometer only needs a scalar it already has.
+- **Gap handling**: a fix pair with unusually large `dt` (GPS dropout) contributes zero distance for that interval rather than extrapolating the last known speed across an unknown gap. Simpler consequence than the Correlator's `gps_gap` flag — no downstream record (no "lap") that needs marking suspect, the interval's contribution is just skipped. Exact `dt` threshold is an implementation detail, not pinned here.
+- **Noise/outlier rejection**: unified via the fix's `accuracy` field — any fix over an accuracy threshold is rejected from *all* accumulation (current speed, distance integration, top speed alike), rather than a separate hardcoded max-plausible-speed cap. A speed cap wouldn't generalize across karting vs. high-speed descent use cases; accuracy-based rejection is domain-agnostic and reuses a field already on `GPSFix`. Exact accuracy threshold is likewise an implementation detail.
+- **Snapshot shape**: `SpeedometerSnapshot { current_speed_ms, top_speed_ms, distance_m, average_speed_ms, elapsed }` — current speed passed through directly from the (accuracy-filtered) fix, top speed = running max, distance = running integral, average = distance/elapsed, elapsed = now − first-fix-seen.
+- **Lifecycle**: no in-place "trip reset" for v1 — a fresh `Speedometer` instance per logical trip is simpler and consistent with the no-persistence, no-cross-session-state boundary already set for `Session`. A live reset UX can be added later without redesigning this.

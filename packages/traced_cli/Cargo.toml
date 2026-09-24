@@ -1,0 +1,13 @@
+[package]
+name = "traced_cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tracing = { workspace = true, version = "0.1.44" }
+traced_core = { workspace = true }
+tracing-subscriber = { workspace = true, version = "0.3", features = [
+  "env-filter",
+] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+futures = "0.3.34"
