@@ -3,6 +3,7 @@ use dioxus::prelude::*;
 use recorder::RecorderCtx;
 use views::{Live, Results, Setup};
 
+mod gps;
 mod recorder;
 mod tracks;
 mod views;

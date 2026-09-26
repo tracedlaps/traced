@@ -3600,7 +3600,13 @@ dependencies = [
 name = "mobile"
 version = "0.1.0"
 dependencies = [
+ "async-stream",
+ "chrono",
  "dioxus",
+ "futures",
+ "manganis",
+ "serde",
+ "serde_json",
  "tokio",
  "traced_core",
 ]

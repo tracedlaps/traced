@@ -1,18 +1,26 @@
 use std::{convert::identity, sync::Arc};
 
 use dioxus::{core::spawn_forever, prelude::*};
+use futures::stream::BoxStream;
 use tokio::sync::watch;
 use traced_core::{
     gps::{
         mock::{MockGPSConfig, MockGPSProvider},
-        GPSFix, GpsProvider,
+        GPSFix, GpsError, GpsProvider, GpsStatus,
     },
     recorder::{Recorder, Recording, RecordingSummary},
     speedometer::SpeedometerSnapshot,
     track::{LiveSessionSnapshot, Track},
 };
 
-use crate::tracks::{Preset, TRACKS};
+use crate::{
+    gps::wire::Permission,
+    tracks::{Preset, TRACKS},
+};
+#[cfg(target_os = "android")]
+use {crate::gps::android::AndroidGpsProvider, dioxus::logger::tracing::warn};
+
+type Fixes = BoxStream<'static, Result<GPSFix, GpsError>>;
 
 /// App-wide recording state. Components only read the snapshot signals; channels stay in here.
 #[derive(Clone, Copy)]
@@ -24,35 +32,70 @@ pub struct RecorderCtx {
     pub fix: Signal<Option<GPSFix>>,
     pub speed: Signal<Option<SpeedometerSnapshot>>,
     pub live: Signal<Option<LiveSessionSnapshot>>,
+    /// The device GPS, or the mock drive's while it runs.
+    pub status: Signal<Option<GpsStatus>>,
+    /// Location permission; `None` without a device GPS.
+    pub permission: Signal<Option<Permission>>,
+    /// Dev switches: drive the mock instead of the device GPS, and skip Fused.
+    pub use_mock: Signal<bool>,
+    pub force_location_manager: Signal<bool>,
+    /// App-lifetime device GPS (leaked once at startup); `None` if the plugin failed to load.
+    #[cfg(target_os = "android")]
+    device: Option<&'static AndroidGpsProvider>,
 }
 
 impl RecorderCtx {
     pub fn new() -> Self {
+        #[cfg(target_os = "android")]
+        let device = match AndroidGpsProvider::new() {
+            Ok(mut gps) => {
+                let permission = match gps.init() {
+                    Err(GpsError::PermissionDenied) => Permission::Denied,
+                    _ => Permission::Granted,
+                };
+                Some((&*Box::leak(Box::new(gps)), permission))
+            }
+            Err(e) => {
+                warn!("no device GPS: {e}");
+                None
+            }
+        };
+        #[cfg(not(target_os = "android"))]
+        let device: Option<((), Permission)> = None;
         // Owned by the root scope, where `spawn_forever` runs the tasks that write them.
-        Self {
+        let ctx = Self {
             recording: Signal::new_in_scope(None, ScopeId::ROOT),
             last_summary: Signal::new_in_scope(None, ScopeId::ROOT),
             track: Signal::new_in_scope(None, ScopeId::ROOT),
             fix: Signal::new_in_scope(None, ScopeId::ROOT),
             speed: Signal::new_in_scope(None, ScopeId::ROOT),
             live: Signal::new_in_scope(None, ScopeId::ROOT),
+            status: Signal::new_in_scope(None, ScopeId::ROOT),
+            permission: Signal::new_in_scope(
+                device.map(|(_, permission)| permission),
+                ScopeId::ROOT,
+            ),
+            use_mock: Signal::new_in_scope(!cfg!(target_os = "android"), ScopeId::ROOT),
+            force_location_manager: Signal::new_in_scope(false, ScopeId::ROOT),
+            #[cfg(target_os = "android")]
+            device: device.map(|(gps, _)| gps),
+        };
+        #[cfg(target_os = "android")]
+        if let Some(gps) = ctx.device {
+            bridge(gps.status(), ctx.status, Some);
         }
+        ctx
     }
 
-    /// Records against `preset`'s track, or with no track (speedometer only).
-    pub fn start(mut self, preset: Option<&'static Preset>) {
-        // Mock seam: drive the chosen track (or the first one) until a real provider exists.
-        let driven = preset.unwrap_or(&TRACKS[0]);
+    /// Records against `preset`'s track, or with no track (speedometer only). On the device GPS,
+    /// first asks for the location permission if needed; fails if denied or location is off.
+    pub async fn start(mut self, preset: Option<&'static Preset>) -> Result<(), GpsError> {
         let track = preset.map(|p| p.track.clone());
-        let gps = MockGPSProvider::drive(
-            &driven.track,
-            driven.mock_speed_kmh / 3.6,
-            MockGPSConfig {
-                jitter_m: 2.0,
-                ..Default::default()
-            },
-        );
-        let recording = Recorder::start(gps.stream_fixes(), track.clone());
+        let fixes = match self.device_fixes().await? {
+            Some(fixes) => fixes,
+            None => self.mock_fixes(preset),
+        };
+        let recording = Recorder::start(fixes, track.clone());
         bridge(recording.fix.clone(), self.fix, identity);
         bridge(recording.speedometer.clone(), self.speed, Some);
         if let Some(live) = recording.session.clone() {
@@ -61,13 +104,74 @@ impl RecorderCtx {
         self.track.set(track);
         self.last_summary.set(None);
         self.recording.set(Some(recording));
+        self.keep_screen_on(true);
+        Ok(())
     }
 
     pub fn stop(mut self) {
         let Some(recording) = self.recording.write().take() else {
             return;
         };
+        self.keep_screen_on(false);
         spawn_forever(async move { self.last_summary.set(Some(recording.stop().await)) });
+    }
+}
+
+impl RecorderCtx {
+    /// Drives the chosen track (or the first one) on the mock GPS.
+    fn mock_fixes(self, preset: Option<&'static Preset>) -> Fixes {
+        let driven = preset.unwrap_or(&TRACKS[0]);
+        let mut gps = MockGPSProvider::drive(
+            &driven.track,
+            driven.mock_speed_kmh / 3.6,
+            MockGPSConfig {
+                jitter_m: 2.0,
+                ..Default::default()
+            },
+        );
+        let _ = gps.init();
+        bridge(gps.status(), self.status, Some);
+        gps.stream_fixes()
+    }
+
+    /// The device GPS's fixes, unless there is none or the mock is switched on.
+    #[cfg(target_os = "android")]
+    async fn device_fixes(mut self) -> Result<Option<Fixes>, GpsError> {
+        if *self.use_mock.peek() {
+            return Ok(None);
+        }
+        let gps = self
+            .device
+            .ok_or_else(|| GpsError::Unavailable("the GPS plugin failed to load".into()))?;
+        let permission = gps.request_permission().await?;
+        self.permission.set(Some(permission));
+        if permission != Permission::Granted {
+            return Err(GpsError::PermissionDenied);
+        }
+        if !gps.location_enabled()? {
+            return Err(GpsError::LocationDisabled);
+        }
+        Ok(Some(gps.stream(*self.force_location_manager.peek())))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    async fn device_fixes(self) -> Result<Option<Fixes>, GpsError> {
+        Ok(None)
+    }
+
+    fn keep_screen_on(self, _on: bool) {
+        #[cfg(target_os = "android")]
+        if let Some(Err(e)) = self.device.map(|gps| gps.keep_screen_on(_on)) {
+            warn!("keep screen on: {e}");
+        }
+    }
+
+    /// Opens the app's system settings, where a blocked permission can be granted.
+    pub fn open_settings(self) {
+        #[cfg(target_os = "android")]
+        if let Some(Err(e)) = self.device.map(|gps| gps.open_app_settings()) {
+            warn!("open settings: {e}");
+        }
     }
 }
 

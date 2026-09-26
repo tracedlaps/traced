@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use dioxus::prelude::*;
 use traced_core::track::LiveStatus;
 
-use super::{kmh, lap_time, track_map::TrackMap};
+use super::{gps_status, kmh, lap_time, track_map::TrackMap};
 use crate::{recorder::RecorderCtx, Route};
 
 #[component]
@@ -56,6 +56,7 @@ pub fn Live() -> Element {
                     }
                 }
             }
+            p { class: "note", {gps_status(*ctx.status.read())} }
             if ended {
                 p { class: "note", "GPS stream ended. Stop to see the results." }
             }

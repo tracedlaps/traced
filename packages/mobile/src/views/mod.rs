@@ -6,6 +6,7 @@ mod track_map;
 pub use live::Live;
 pub use results::Results;
 pub use setup::Setup;
+use traced_core::gps::GpsStatus;
 
 /// `m:ss.t`, the one format for every lap, split and clock.
 fn lap_time(secs: f64) -> String {
@@ -15,4 +16,19 @@ fn lap_time(secs: f64) -> String {
 
 fn kmh(speed_ms: impl Into<f64>) -> String {
     format!("{:.0}", speed_ms.into() * 3.6)
+}
+
+fn gps_status(status: Option<GpsStatus>) -> String {
+    match status {
+        None | Some(GpsStatus::Disconnected) => "GPS off".into(),
+        Some(GpsStatus::Connecting) => "GPS connecting…".into(),
+        Some(GpsStatus::Searching) => "No GPS fix".into(),
+        Some(GpsStatus::Fixed {
+            satellites,
+            accuracy_m,
+            source,
+        }) => {
+            format!("GPS fix · {source:?} · {satellites} satellites · ±{accuracy_m:.0} m")
+        }
+    }
 }

@@ -1,0 +1,15 @@
+[application]
+name = "Traced"
+android_main_activity = "android/MainActivity.kt"
+
+[permissions.location]
+description = "Traced uses GPS for live speed and lap timing"
+precision = "fine"
+
+[bundle]
+identifier = "dev.traced.app"
+
+[android]
+min_sdk = 26
+target_sdk = 34
+features = ["android.hardware.location.gps"]
