@@ -52,6 +52,18 @@ pub static TRACKS: LazyLock<Vec<Preset>> = LazyLock::new(|| {
         .build()
         .expect("valid track");
 
+    // Open run, north then a hairpin right; two sectors, split at waypoint 6 (about halfway).
+    let run = waypoints(include_str!("../tracks/luxembourg_sprint.csv"));
+    let shape = TrackShape::Open {
+        start: run[0],
+        finish: run[run.len() - 1],
+    };
+    let sprint = Track::builder("Luxembourg Sprint", shape)
+        .sector_gate_at(run[5])
+        .waypoints(run)
+        .build()
+        .expect("valid track");
+
     let preset = |track, mock_speed_kmh| Preset {
         track: Arc::new(track),
         mock_speed_kmh,
@@ -59,6 +71,7 @@ pub static TRACKS: LazyLock<Vec<Preset>> = LazyLock::new(|| {
     vec![
         preset(mondercange, 50.0),
         preset(senhora_da_lage, 90.0),
+        preset(sprint, 60.0),
         preset(lisbon, 36.0),
     ]
 });
@@ -90,5 +103,10 @@ mod tests {
         let descent = &TRACKS[1].track;
         assert_eq!(descent.sectors().count(), 3);
         assert!((descent.length() - 2553.0).abs() < 5.0);
+
+        let sprint = &TRACKS[2].track;
+        let sectors: Vec<_> = sprint.sectors().map(|s| s.length.round()).collect();
+        assert_eq!(sectors.len(), 2);
+        assert!((sprint.length() - 610.0).abs() < 5.0, "{sectors:?}");
     }
 }
