@@ -5,11 +5,14 @@ use futures::stream::{self, BoxStream, StreamExt};
 use rand::RngExt;
 
 use crate::gps::{GPSFix, GpsProvider, GpsStatus};
+use crate::track::{Boundary, Projection, Track};
 
 #[derive(Debug)]
 pub struct MockGPSConfig {
     pub interval: Duration,
     pub loop_fixes: bool,
+    /// Max random offset (m) added to each fix's position, per axis, when sent.
+    pub jitter_m: f64,
 }
 
 impl Default for MockGPSConfig {
@@ -17,6 +20,7 @@ impl Default for MockGPSConfig {
         Self {
             interval: Duration::from_secs(1),
             loop_fixes: true,
+            jitter_m: 0.0,
         }
     }
 }
@@ -40,7 +44,7 @@ impl GpsProvider for MockGPSProvider {
     }
 
     fn stream_fixes(&self) -> BoxStream<'static, Result<super::GPSFix, super::GpsError>> {
-        let interval = self.config.interval;
+        let (interval, jitter) = (self.config.interval, self.config.jitter_m);
         let fixes = self.fixes.clone();
         let last_fix = self.last_fix.clone();
         let status = self.status.clone();
@@ -54,7 +58,8 @@ impl GpsProvider for MockGPSProvider {
         stream::iter(iter)
             .then(move |fix| async move {
                 tokio::time::sleep(interval).await;
-                Ok(fix)
+                // Stamped on send, like a real device, so looped fixes keep moving forward in time.
+                Ok(GPSFix { timestamp: chrono::Utc::now(), ..jittered(fix, jitter) })
             })
             .inspect(move |result| {
                 if let Ok(fix) = result {
@@ -97,15 +102,115 @@ impl MockGPSProvider {
                 altitude_m: Some(rng.random_range(0.0..3000.0)),
                 heading_deg: Some(rng.random_range(0.0..360.0)),
                 accuracy: rng.random_range(1.0..20.0),
-                timestamp: chrono::Utc::now(),
+                ..Default::default()
             })
             .collect();
         Self::new(fixes, config)
     }
+
+    /// Drives `track` at a constant ~`speed_ms`, one fix per `config.interval`: endless laps
+    /// on a Closed track (overrides `loop_fixes`), a single pass on an Open one.
+    /// Speed is nudged so a lap is a whole number of fixes, which keeps lap times exact.
+    pub fn drive(track: &Track, speed_ms: f64, mut config: MockGPSConfig) -> Self {
+        let closed = matches!(track.boundary, Boundary::Closed { .. });
+        let length = track.length();
+        let n = (length / (speed_ms * config.interval.as_secs_f64())).round().max(1.0) as usize;
+        let step = length / n as f64;
+        // A Closed lap's last point is its first, so it's left out.
+        let points: Vec<_> = (0..n + usize::from(!closed)).map(|i| track.point_at(i as f64 * step)).collect();
+        let fixes = points
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                let next = points.get(i + 1).or(closed.then_some(&points[0])).unwrap_or(p);
+                let d = track.projection.project(*next) - track.projection.project(*p);
+                GPSFix {
+                    latitude: p.y(),
+                    longitude: p.x(),
+                    speed_ms: (step / config.interval.as_secs_f64()) as f32,
+                    heading_deg: Some(d.x().atan2(d.y()).to_degrees().rem_euclid(360.0) as f32),
+                    accuracy: config.jitter_m.max(1.0) as f32,
+                    ..Default::default()
+                }
+            })
+            .collect();
+        config.loop_fixes = closed;
+        Self::new(fixes, config)
+    }
+}
+
+/// `fix` moved by up to `jitter_m` metres on each axis.
+fn jittered(fix: GPSFix, jitter_m: f64) -> GPSFix {
+    if jitter_m <= 0.0 {
+        return fix;
+    }
+    let mut rng = rand::rng();
+    let offset = geo::Point::new(rng.random_range(-jitter_m..=jitter_m), rng.random_range(-jitter_m..=jitter_m));
+    let p = Projection::new(geo::Point::new(fix.longitude, fix.latitude)).unproject(offset);
+    GPSFix { latitude: p.y(), longitude: p.x(), ..fix }
 }
 
 impl Default for MockGPSProvider {
     fn default() -> Self {
         Self::random(10, MockGPSConfig::default())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::recorder::FixConsumer;
+    use crate::track::{Completed, Correlator, TrackShape, Waypoint};
+    use chrono::{DateTime, TimeDelta};
+    use futures::StreamExt;
+
+    fn lisbon_loop() -> Track {
+        Track::builder("Loop", TrackShape::Closed { gate: Waypoint::new(-8.999, 38.7) })
+            .waypoints([
+                Waypoint::new(-9.0, 38.7),
+                Waypoint::new(-8.998, 38.7),
+                Waypoint::new(-8.998, 38.701),
+                Waypoint::new(-9.0, 38.701),
+            ])
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn drive_times_whole_laps() {
+        let track = lisbon_loop();
+        let mock = MockGPSProvider::drive(&track, 10.0, MockGPSConfig::default());
+        let n = mock.fixes.len();
+        assert_eq!(n, (track.length() / 10.0).round() as usize);
+        assert!(mock.config.loop_fixes);
+
+        // Two laps and a bit, one fix per second.
+        let (mut c, _rx) = Correlator::new(std::sync::Arc::new(track));
+        for (i, fix) in mock.fixes.iter().cycle().take(2 * n + 2).enumerate() {
+            c.on_fix(GPSFix { timestamp: DateTime::UNIX_EPOCH + TimeDelta::seconds(i as i64), ..*fix });
+        }
+        let Completed::Laps(laps) = c.into_session().completed else { panic!("closed track") };
+        assert_eq!(laps.len(), 1);
+        assert!((laps[0].duration() - TimeDelta::seconds(n as i64)).abs() < TimeDelta::milliseconds(1));
+    }
+
+    #[test]
+    fn drive_heads_along_the_track() {
+        let mock = MockGPSProvider::drive(&lisbon_loop(), 10.0, MockGPSConfig::default());
+        // First leg runs due east.
+        assert!((mock.fixes[0].heading_deg.unwrap() - 90.0).abs() < 1e-3);
+    }
+
+    #[tokio::test]
+    async fn stream_stamps_and_jitters_on_send() {
+        let config = MockGPSConfig { interval: Duration::from_millis(1), loop_fixes: true, jitter_m: 5.0 };
+        let fix = GPSFix { latitude: 38.7, longitude: -9.0, ..Default::default() };
+        let sent: Vec<_> = MockGPSProvider::new(vec![fix], config).stream_fixes().take(3).map(Result::unwrap).collect().await;
+        assert!(sent.windows(2).all(|w| w[0].timestamp < w[1].timestamp));
+        let origin = Projection::new(geo::Point::new(-9.0, 38.7));
+        for s in &sent {
+            let d = origin.project(geo::Point::new(s.longitude, s.latitude));
+            assert!(d.x().abs() <= 5.0 + 1e-6 && d.y().abs() <= 5.0 + 1e-6);
+        }
     }
 }

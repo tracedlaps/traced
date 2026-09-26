@@ -93,4 +93,4 @@ The short version, for anyone picking this up:
 
 `track::correlator` implemented (2026-09-26) and wired into `Recorder::start(fixes, Option<Arc<Track>>)`: only the next gate in `gates_ordered` is tested per fix (segment intersection, forward-only, interpolated time), a dropout > 2 s sets `gps_gap`, and re-crossing the same gate needs the fix to have been > 30 m from it first. `LiveSessionSnapshot { status: Armed | InProgress { anchor, sector } | Finished, laps, last_lap }`.
 
-Next up: a mock provider that drives laps with real timestamps, so the CLI exercises timing end to end.
+`MockGPSProvider::drive(&track, speed_ms, config)` (2026-09-26): constant-speed fixes along the polyline (via `Track::point_at`), endless laps on Closed tracks; every mock now stamps fixes on send and applies `config.jitter_m`. `traced_cli` times laps of its Lisbon loop.

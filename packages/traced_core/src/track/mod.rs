@@ -3,7 +3,7 @@ mod session;
 pub use correlator::{Correlator, LiveSessionSnapshot, LiveStatus};
 pub use session::{Completed, Lap, Run, Session};
 
-use geo::{Coord, Densify, Euclidean, Length, Line, Point, coord};
+use geo::{Coord, Densify, Euclidean, InterpolateLine, Length, Line, Point, coord};
 use uuid::Uuid;
 
 pub type Waypoint = geo::Point<f64>;
@@ -38,6 +38,12 @@ impl Track {
     /// Total polyline length (m); a full lap on a Closed track.
     pub fn length(&self) -> f64 {
         Euclidean.length(&self.polyline)
+    }
+
+    /// The point `distance` metres along the polyline (clamped to its ends), as lat/lon.
+    pub fn point_at(&self, distance: f64) -> Waypoint {
+        let p = Euclidean.point_at_distance_from_start(&self.polyline, distance);
+        self.projection.unproject(p.expect("a built polyline has ≥ 2 points"))
     }
 
     /// Start gate, sector gates in travel order, then finish gate.

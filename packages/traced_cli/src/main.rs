@@ -1,6 +1,9 @@
-use traced_core::gps::{GpsProvider, mock::MockGPSProvider};
+use traced_core::gps::{
+    GpsProvider,
+    mock::{MockGPSConfig, MockGPSProvider},
+};
 use traced_core::recorder::Recorder;
-use traced_core::track::{Track, TrackShape, Waypoint};
+use traced_core::track::{LiveStatus, Track, TrackShape, Waypoint};
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
 
@@ -35,10 +38,6 @@ pub fn init_logging() {
 #[tokio::main]
 async fn main() {
     init_logging();
-    let mut gps_provider = MockGPSProvider::default();
-
-    gps_provider.init().unwrap();
-
     // ~170 m x 110 m loop in Lisbon, gate and a sector midway along the first two legs.
     let track = Track::builder(
         "Test",
@@ -65,8 +64,27 @@ async fn main() {
         tracing::info!("Sector {}: {:.1} m", i + 1, sector.length);
     }
 
+    // Laps of the track at 10 m/s, with ±2 m of GPS jitter.
+    let config = MockGPSConfig { jitter_m: 2.0, ..Default::default() };
+    let mut gps_provider = MockGPSProvider::drive(&track, 10.0, config);
+    gps_provider.init().unwrap();
+
     // Record until the stream ends or Ctrl-C.
     let mut rec = Recorder::start(gps_provider.stream_fixes(), Some(Arc::new(track)));
+    if let Some(mut live) = rec.session.clone() {
+        tokio::spawn(async move {
+            while live.changed().await.is_ok() {
+                let s = *live.borrow();
+                match s.status {
+                    LiveStatus::InProgress { sector, .. } => tracing::info!(
+                        "Lap {} sector {} (laps done: {}, last: {:?})",
+                        s.laps + 1, sector + 1, s.laps, s.last_lap.map(|t| t.as_seconds_f64())
+                    ),
+                    status => tracing::info!("Session {status:?}"),
+                }
+            }
+        });
+    }
     tokio::select! {
         _ = async {
             while rec.speedometer.changed().await.is_ok() {
