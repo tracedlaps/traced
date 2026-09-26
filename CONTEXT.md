@@ -16,7 +16,7 @@ Trait abstracting a source of live `GPSFix`es as an async stream (real device or
 Created per recording: takes a `GpsProvider`'s fix stream (the app keeps the provider), and forwards each `GPSFix` by value to its consumers, a `Speedometer` and an optional `Correlator`. Sole owner of the stream: the answer to "how do multiple features see the same fixes" without cloning a stream.
 
 **Recording**:
-The handle returned by `Recorder::start` for one recording: typed `watch` receivers for each consumer's snapshot, plus `stop(self) -> RecordingSummary`. Dropping it stops the recording.
+The handle returned by `Recorder::start` for one recording: typed `watch` receivers for the latest raw `GPSFix` and each consumer's snapshot, plus `stop(self) -> RecordingSummary`. Dropping it stops the recording.
 
 **RecordingSummary**:
 What a finished recording hands back: the completed `Session` (if a track was armed) and the final `SpeedometerSnapshot`.
@@ -63,7 +63,7 @@ The read-only view of a `Speedometer`'s current state (current speed, top speed,
 Stateful `FixConsumer` that matches live fixes against an armed `Track`'s geometry to detect gate crossings, interpolating the exact crossing timestamp between consecutive fixes. Owns a `LiveSessionSnapshot` for its `Session`.
 
 **LiveSessionSnapshot**:
-The read-only view of a `Correlator`'s current state (e.g. current lap number, a live-clock anchor), pushed to the UI on change. The UI never computes timing itself; its one exception is rendering `anchor.elapsed()` for the live clock.
+The read-only view of a `Correlator`'s current state (status, current lap and sector, lap and sector clock anchors, last lap/sector times), pushed to the UI on change. The UI never computes timing itself; its one exception is rendering an anchor's `elapsed()` for the live clocks.
 
 **Session**:
 One continuous timed attempt on a `Track`: a reference to the `Track` plus, depending on `TrackShape`, either an ordered `Vec<Lap>` (Closed) or a single `Run` (Open). Laps/Runs store only raw gate-crossing timestamps — durations and deltas are derived, never stored.

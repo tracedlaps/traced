@@ -19,6 +19,7 @@ pub trait FixConsumer {
 
 /// Sole owner of one recording's fix stream; forwards each fix to its consumers.
 pub struct Recorder {
+    fix: watch::Sender<Option<GPSFix>>,
     speedometer: Speedometer,
     correlator: Option<Correlator>,
 }
@@ -31,12 +32,21 @@ impl Recorder {
     ) -> Recording {
         let (speedometer, speed_rx) = Speedometer::new();
         let (correlator, session) = track.map(Correlator::new).unzip();
+        let (fix, fix_rx) = watch::channel(None);
         let (stop, stop_rx) = oneshot::channel();
         Recording {
+            fix: fix_rx,
             speedometer: speed_rx,
             session,
             stop,
-            task: tokio::spawn(Self { speedometer, correlator }.run(fixes, stop_rx)),
+            task: tokio::spawn(
+                Self {
+                    fix,
+                    speedometer,
+                    correlator,
+                }
+                .run(fixes, stop_rx),
+            ),
         }
     }
 
@@ -51,6 +61,7 @@ impl Recorder {
                 _ = &mut stop => break,
                 item = fixes.next() => match item {
                     Some(Ok(fix)) => {
+                        self.fix.send_replace(Some(fix));
                         self.speedometer.on_fix(fix);
                         if let Some(c) = &mut self.correlator {
                             c.on_fix(fix);
@@ -70,6 +81,8 @@ impl Recorder {
 
 /// Handle to a running recording. Dropping it stops the recording.
 pub struct Recording {
+    /// The latest raw fix, e.g. to show where you are; `None` until the first one.
+    pub fix: watch::Receiver<Option<GPSFix>>,
     pub speedometer: watch::Receiver<SpeedometerSnapshot>,
     /// `None` when recording without a track.
     pub session: Option<watch::Receiver<LiveSessionSnapshot>>,
@@ -138,6 +151,7 @@ mod tests {
         tx.unbounded_send(Ok(fix(0, 12.0))).unwrap();
         rec.speedometer.changed().await.unwrap();
         assert_eq!(rec.speedometer.borrow().current_speed_ms, 12.0);
+        assert_eq!(rec.fix.borrow().map(|f| f.speed_ms), Some(12.0));
 
         let mut speed = rec.speedometer.clone();
         drop(rec);

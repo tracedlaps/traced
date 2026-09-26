@@ -17,6 +17,7 @@ pub struct LiveSessionSnapshot {
     pub status: LiveStatus,
     pub laps: usize,
     pub last_lap: Option<TimeDelta>,
+    pub last_sector: Option<TimeDelta>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
@@ -24,8 +25,9 @@ pub enum LiveStatus {
     /// Waiting for the first start-gate crossing.
     #[default]
     Armed,
-    /// `anchor` is the lap start on the device clock: the UI shows `anchor.elapsed()`.
-    InProgress { anchor: Instant, sector: usize },
+    /// Anchors are the lap and current sector starts on the device clock:
+    /// the UI shows their `elapsed()`.
+    InProgress { lap_anchor: Instant, sector_anchor: Instant, sector: usize },
     Finished,
 }
 
@@ -93,6 +95,7 @@ impl FixConsumer for Correlator {
             _ => (Vec::new(), gap),
         };
         crossings.push(at);
+        let last_sector = crossings.len().checked_sub(2).map(|i| at - crossings[i]);
         let mut done = None;
         self.state = if crossings.len() < self.track.gates_ordered().count() {
             State::InProgress { crossings, gps_gap }
@@ -110,12 +113,15 @@ impl FixConsumer for Correlator {
         let anchor = Instant::now() - (t1 - at).to_std().unwrap_or_default();
         self.tx.send_modify(|s| {
             s.status = match (&self.state, s.status) {
-                (State::InProgress { crossings, .. }, LiveStatus::InProgress { anchor, .. }) if crossings.len() > 1 => {
-                    LiveStatus::InProgress { anchor, sector: crossings.len() - 1 }
+                (State::InProgress { crossings, .. }, LiveStatus::InProgress { lap_anchor, .. }) if crossings.len() > 1 => {
+                    LiveStatus::InProgress { lap_anchor, sector_anchor: anchor, sector: crossings.len() - 1 }
                 }
-                (State::InProgress { .. }, _) => LiveStatus::InProgress { anchor, sector: 0 },
+                (State::InProgress { .. }, _) => {
+                    LiveStatus::InProgress { lap_anchor: anchor, sector_anchor: anchor, sector: 0 }
+                }
                 _ => LiveStatus::Finished,
             };
+            s.last_sector = last_sector.or(s.last_sector);
             if done.is_some() {
                 s.laps += 1;
                 s.last_lap = done;
@@ -206,8 +212,10 @@ mod tests {
 
     #[test]
     fn sector_splits() {
-        let (mut c, _rx) = Correlator::new(square(&[(100.0, 50.0), (50.0, 100.0)]));
+        let (mut c, rx) = Correlator::new(square(&[(100.0, 50.0), (50.0, 100.0)]));
         drive(&mut c, steps(25.0, 455.0));
+        // Past the lap line: the last sector closed the lap.
+        assert_eq!(rx.borrow().last_sector, Some(TimeDelta::seconds(20)));
         let splits: Vec<_> = laps(c)[0].splits().collect();
         assert_eq!(splits, [10, 10, 20].map(TimeDelta::seconds));
     }
