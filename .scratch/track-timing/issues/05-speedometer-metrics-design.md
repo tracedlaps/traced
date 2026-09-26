@@ -3,7 +3,7 @@ Status: resolved
 
 ## Question
 
-Design `speedometer::Speedometer`'s internal metrics computation: it implements `FixConsumer` (decided in [Fix fan-out: Recorder + FixConsumer](04-fix-fanout-recorder.md)) and runs independently of any `Track`/`Session`. What state does it accumulate per fix, and what does its poll-able snapshot expose — current speed, top speed, distance travelled, average speed, others? How is distance-travelled integrated between fixes (reuse the flat local-plane math from [Track geometry & gate/sector model](01-track-geometry-model.md)), and how does it handle GPS noise/gaps (does it need its own version of the monotonic/gap-flag reasoning from [GPS-fix correlation algorithm](02-correlator-algorithm.md), or is it simpler since there's no gate-crossing involved)?
+Design `speedometer::Speedometer`'s internal metrics computation: it implements `FixConsumer` (decided in [Fix fan-out: Recorder + FixConsumer](04-fix-fanout-recorder.md)) and runs independently of any `Track`/`Session`. What state does it accumulate per fix, and what does its snapshot expose — current speed, top speed, distance travelled, average speed, others? How is distance-travelled integrated between fixes (reuse the flat local-plane math from [Track geometry & gate/sector model](01-track-geometry-model.md)), and how does it handle GPS noise/gaps (does it need its own version of the monotonic/gap-flag reasoning from [GPS-fix correlation algorithm](02-correlator-algorithm.md), or is it simpler since there's no gate-crossing involved)?
 
 ## Answer
 

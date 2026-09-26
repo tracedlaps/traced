@@ -1,5 +1,5 @@
-use futures::StreamExt;
 use traced_core::gps::{GpsProvider, mock::MockGPSProvider};
+use traced_core::recorder::Recorder;
 use traced_core::track::{Track, TrackShape, Waypoint};
 use tracing_subscriber::EnvFilter;
 
@@ -39,29 +39,46 @@ async fn main() {
     gps_provider.init().unwrap();
 
     // ~170 m x 110 m loop in Lisbon, gate and a sector midway along the first two legs.
-    let track = Track::builder("Test", TrackShape::Closed { gate: Waypoint::new(-8.999, 38.7) })
-        .waypoints([
-            Waypoint::new(-9.0, 38.7),
-            Waypoint::new(-8.998, 38.7),
-            Waypoint::new(-8.998, 38.701),
-            Waypoint::new(-9.0, 38.701),
-        ])
-        .sector_gate_at(Waypoint::new(-8.998, 38.7005))
-        .build()
-        .expect("track");
+    let track = Track::builder(
+        "Test",
+        TrackShape::Closed {
+            gate: Waypoint::new(-8.999, 38.7),
+        },
+    )
+    .waypoints([
+        Waypoint::new(-9.0, 38.7),
+        Waypoint::new(-8.998, 38.7),
+        Waypoint::new(-8.998, 38.701),
+        Waypoint::new(-9.0, 38.701),
+    ])
+    .sector_gate_at(Waypoint::new(-8.998, 38.7005))
+    .build()
+    .expect("track");
 
-    tracing::info!("Track created with ID: {} ({:.1} m)", track.uuid, track.length());
+    tracing::info!(
+        "Track created with ID: {} ({:.1} m)",
+        track.uuid,
+        track.length()
+    );
     for (i, sector) in track.sectors().enumerate() {
         tracing::info!("Sector {}: {:.1} m", i + 1, sector.length);
     }
 
-    let mut fixes = gps_provider.stream_fixes();
-    while let Some(fix) = fixes.next().await {
-        match fix {
-            Ok(fix) => tracing::info!("GPS Fix: {fix}"),
-            Err(e) => tracing::error!("GPS error: {e}"),
-        }
+    // Record until the stream ends or Ctrl-C.
+    let mut rec = Recorder::start(gps_provider.stream_fixes());
+    tokio::select! {
+        _ = async {
+            while rec.speedometer.changed().await.is_ok() {
+                let s = *rec.speedometer.borrow();
+                tracing::info!(
+                    "{:.1} m/s (top {:.1}, avg {:.1}) {:.0} m in {:.0?}",
+                    s.current_speed_ms, s.top_speed_ms, s.average_speed_ms, s.distance_m, s.elapsed
+                );
+            }
+        } => {}
+        _ = tokio::signal::ctrl_c() => {}
     }
+    tracing::info!("Recording finished: {:?}", rec.stop().await);
 
     gps_provider.deinit();
 }

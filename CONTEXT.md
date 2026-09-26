@@ -13,10 +13,16 @@ A single timestamped position reading (lat/lon, speed, optional altitude/heading
 Trait abstracting a source of live `GPSFix`es as an async stream (real device or mock). Only ever consumed by one `Recorder` at a time — the stream itself is not shareable.
 
 **Recorder**:
-Owns a `GpsProvider`, drives its fix stream, and forwards each `GPSFix` (by value) to every registered `FixConsumer`. Sole owner of the raw stream — the answer to "how do multiple features see the same fixes" without cloning a stream.
+Created per recording: takes a `GpsProvider`'s fix stream (the app keeps the provider), and forwards each `GPSFix` by value to its consumers, a `Speedometer` and an optional `Correlator`. Sole owner of the stream: the answer to "how do multiple features see the same fixes" without cloning a stream.
+
+**Recording**:
+The handle returned by `Recorder::start` for one recording: typed `watch` receivers for each consumer's snapshot, plus `stop(self) -> RecordingSummary`. Dropping it stops the recording.
+
+**RecordingSummary**:
+What a finished recording hands back: the completed `Session` (if a track was armed) and the final `SpeedometerSnapshot`.
 
 **FixConsumer**:
-Trait for anything that reacts to a live fix stream (`Track::Correlator`, `Speedometer`). Stateful accumulator fed one fix at a time; exposes its state via a poll-able snapshot rather than pushing events.
+Trait for anything that reacts to a live fix stream (`Track::Correlator`, `Speedometer`). Stateful accumulator fed one fix at a time; publishes its snapshot on a `watch` channel after each fix (latest value only, pushed on change).
 _Avoid_: Subscriber, listener (implies pub/sub — this is direct dispatch from one owner, not a broadcast channel).
 
 ### Track geometry
@@ -49,7 +55,7 @@ The stretch of track between two consecutive gates (`start_gate` → first `sect
 Stateful `FixConsumer` that accumulates current/top/average speed and distance travelled from the live fix stream, independent of any `Track`/`Session`. Integrates distance via `speed_ms × dt`, not position differencing, to avoid stationary GPS position jitter.
 
 **SpeedometerSnapshot**:
-The poll-able, read-only view of a `Speedometer`'s current state (current speed, top speed, distance, average speed, elapsed). Same poll-not-push convention as `LiveSessionSnapshot`.
+The read-only view of a `Speedometer`'s current state (current speed, top speed, distance, average speed, elapsed), pushed to the UI on change. Same convention as `LiveSessionSnapshot`.
 
 ### Timing
 
@@ -57,7 +63,7 @@ The poll-able, read-only view of a `Speedometer`'s current state (current speed,
 Stateful `FixConsumer` that matches live fixes against an armed `Track`'s geometry to detect gate crossings, interpolating the exact crossing timestamp between consecutive fixes. Owns a `LiveSessionSnapshot` for its `Session`.
 
 **LiveSessionSnapshot**:
-The poll-able, read-only view of a `Correlator`'s current state (e.g. current lap number, elapsed time since last gate). What UI code reads — UI never computes timing itself.
+The read-only view of a `Correlator`'s current state (e.g. current lap number, a live-clock anchor), pushed to the UI on change. The UI never computes timing itself; its one exception is rendering `anchor.elapsed()` for the live clock.
 
 **Session**:
 One continuous timed attempt on a `Track`: a reference to the `Track` plus, depending on `TrackShape`, either an ordered `Vec<Lap>` (Closed) or a single `Run` (Open). Laps/Runs store only raw gate-crossing timestamps — durations and deltas are derived, never stored.
@@ -81,4 +87,6 @@ The short version, for anyone picking this up:
 - `Track` has no public constructor. `TrackBuilder::build()` is the only way in, because a `Gate` can't be derived before the `Polyline` exists.
 - Build errors: `TooFewWaypoints`, `PlacementOffTrack` (>30 m from the polyline), `PlacementBeyondTrack` (past an open end), `FinishBeforeStart`, `SectorOutsideTrack`.
 
-Next up: the Correlator's gate-crossing/interpolation algorithm (it tests fixes against `Gate::segment()`) and Session/Lap/Run bookkeeping. Neither is designed yet.
+`recorder` + `speedometer` implemented (2026-09-26): `FixConsumer`, `Speedometer` (trapezoid `speed_ms × dt`, 5 s gap skip, >25 m accuracy reject; the `watch::Sender` holds the snapshot, stored `average_speed_ms` = distance ÷ integrated time, excluding dropouts), `Recorder::start(fixes) -> Recording`, `Recording::stop() -> RecordingSummary`. No `Correlator` slot yet. `traced_cli` records the mock stream until Ctrl-C.
+
+Next up: implement the Correlator (02) and Session/Lap/Run (03), then add `Option<Correlator>` + `session` receiver to the Recorder per 06.
