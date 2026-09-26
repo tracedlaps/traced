@@ -2,6 +2,7 @@ use std::fmt::{self, Display};
 
 use chrono::{DateTime, Utc};
 use futures::stream::BoxStream;
+use tokio::sync::watch;
 
 pub mod mock;
 
@@ -12,7 +13,11 @@ pub struct GPSFix {
     pub speed_ms: f32,
     pub altitude_m: Option<f32>,
     pub heading_deg: Option<f32>,
+    /// Horizontal accuracy (m).
     pub accuracy: f32,
+    pub vertical_accuracy_m: Option<f32>,
+    pub speed_accuracy_ms: Option<f32>,
+    pub heading_accuracy_deg: Option<f32>,
     pub timestamp: DateTime<Utc>,
 }
 
@@ -45,8 +50,16 @@ pub enum GpsStatus {
     Searching,
     Fixed {
         satellites: u8,
-        hdop: f32,
+        accuracy_m: f32,
+        source: FixSource,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FixSource {
+    Mock,
+    Fused,
+    LocationManager,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -57,6 +70,8 @@ pub enum GpsError {
     PermissionDenied,
     #[error("device not found")]
     DeviceNotFound,
+    #[error("location services are disabled")]
+    LocationDisabled,
 }
 
 pub trait GpsProvider: Send + Sync {
@@ -64,5 +79,5 @@ pub trait GpsProvider: Send + Sync {
     fn deinit(&self);
     fn stream_fixes(&self) -> BoxStream<'static, Result<GPSFix, GpsError>>;
     fn get_fix(&self) -> Option<GPSFix>;
-    fn status(&self) -> GpsStatus;
+    fn status(&self) -> watch::Receiver<GpsStatus>;
 }

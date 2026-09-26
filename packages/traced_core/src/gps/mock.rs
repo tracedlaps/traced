@@ -3,8 +3,9 @@ use std::time::Duration;
 
 use futures::stream::{self, BoxStream, StreamExt};
 use rand::RngExt;
+use tokio::sync::watch;
 
-use crate::gps::{GPSFix, GpsProvider, GpsStatus};
+use crate::gps::{FixSource, GPSFix, GpsProvider, GpsStatus};
 use crate::track::{Boundary, Projection, Track};
 
 #[derive(Debug)]
@@ -29,13 +30,13 @@ pub struct MockGPSProvider {
     config: MockGPSConfig,
     fixes: Vec<GPSFix>,
     last_fix: Arc<Mutex<GPSFix>>,
-    status: Arc<Mutex<GpsStatus>>,
+    status: watch::Sender<GpsStatus>,
 }
 
 impl GpsProvider for MockGPSProvider {
     fn init(&mut self) -> Result<(), super::GpsError> {
         tracing::info!("Initializing MockGPSProvider");
-        *self.status.lock().unwrap() = GpsStatus::Searching;
+        self.status.send_replace(GpsStatus::Searching);
         Ok(())
     }
 
@@ -64,10 +65,7 @@ impl GpsProvider for MockGPSProvider {
             .inspect(move |result| {
                 if let Ok(fix) = result {
                     *last_fix.lock().unwrap() = *fix;
-                    *status.lock().unwrap() = GpsStatus::Fixed {
-                        satellites: 8,
-                        hdop: 1.0,
-                    };
+                    status.send_replace(GpsStatus::Fixed { satellites: 8, accuracy_m: fix.accuracy, source: FixSource::Mock });
                 }
             })
             .boxed()
@@ -77,8 +75,8 @@ impl GpsProvider for MockGPSProvider {
         Some(*self.last_fix.lock().unwrap())
     }
 
-    fn status(&self) -> GpsStatus {
-        *self.status.lock().unwrap()
+    fn status(&self) -> watch::Receiver<GpsStatus> {
+        self.status.subscribe()
     }
 }
 
@@ -88,7 +86,7 @@ impl MockGPSProvider {
             config,
             fixes,
             last_fix: Arc::new(Mutex::new(GPSFix::default())),
-            status: Arc::new(Mutex::new(GpsStatus::default())),
+            status: watch::Sender::new(GpsStatus::default()),
         }
     }
 
