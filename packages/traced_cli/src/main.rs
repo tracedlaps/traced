@@ -1,6 +1,7 @@
 use traced_core::gps::{GpsProvider, mock::MockGPSProvider};
 use traced_core::recorder::Recorder;
 use traced_core::track::{Track, TrackShape, Waypoint};
+use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
 
 pub fn init_logging() {
@@ -65,7 +66,7 @@ async fn main() {
     }
 
     // Record until the stream ends or Ctrl-C.
-    let mut rec = Recorder::start(gps_provider.stream_fixes());
+    let mut rec = Recorder::start(gps_provider.stream_fixes(), Some(Arc::new(track)));
     tokio::select! {
         _ = async {
             while rec.speedometer.changed().await.is_ok() {

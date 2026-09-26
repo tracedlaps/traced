@@ -91,4 +91,6 @@ The short version, for anyone picking this up:
 
 `track::session` implemented (2026-09-26): `Session { track_id, completed: Completed::{Laps(Vec<Lap>), Run(Option<Run>)} }`, `Run = Lap` (same shape), `Lap` holds GPS-time `crossings` in `gates_ordered` order + `gps_gap`; `duration()`/`splits()` derived. `Session::record` and `Lap::new` are crate-private, for the Correlator.
 
-Next up: implement the Correlator (02), then add `Option<Correlator>` + `session` receiver to the Recorder per 06.
+`track::correlator` implemented (2026-09-26) and wired into `Recorder::start(fixes, Option<Arc<Track>>)`: only the next gate in `gates_ordered` is tested per fix (segment intersection, forward-only, interpolated time), a dropout > 2 s sets `gps_gap`, and re-crossing the same gate needs the fix to have been > 30 m from it first. `LiveSessionSnapshot { status: Armed | InProgress { anchor, sector } | Finished, laps, last_lap }`.
+
+Next up: a mock provider that drives laps with real timestamps, so the CLI exercises timing end to end.

@@ -1,4 +1,6 @@
+mod correlator;
 mod session;
+pub use correlator::{Correlator, LiveSessionSnapshot, LiveStatus};
 pub use session::{Completed, Lap, Run, Session};
 
 use geo::{Coord, Densify, Euclidean, Length, Line, Point, coord};

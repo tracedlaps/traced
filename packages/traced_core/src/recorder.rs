@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use futures::{StreamExt, stream::BoxStream};
 use tokio::{
     sync::{oneshot, watch},
@@ -7,6 +9,7 @@ use tokio::{
 use crate::{
     gps::{GPSFix, GpsError},
     speedometer::{Speedometer, SpeedometerSnapshot},
+    track::{Correlator, LiveSessionSnapshot, Session, Track},
 };
 
 /// A stateful accumulator fed one fix at a time; publishes its own snapshot.
@@ -17,17 +20,23 @@ pub trait FixConsumer {
 /// Sole owner of one recording's fix stream; forwards each fix to its consumers.
 pub struct Recorder {
     speedometer: Speedometer,
+    correlator: Option<Correlator>,
 }
 
 impl Recorder {
-    /// Spawns the recording on the current tokio runtime.
-    pub fn start(fixes: BoxStream<'static, Result<GPSFix, GpsError>>) -> Recording {
+    /// Spawns the recording on the current tokio runtime. With a `track`, it's also timed.
+    pub fn start(
+        fixes: BoxStream<'static, Result<GPSFix, GpsError>>,
+        track: Option<Arc<Track>>,
+    ) -> Recording {
         let (speedometer, speed_rx) = Speedometer::new();
+        let (correlator, session) = track.map(Correlator::new).unzip();
         let (stop, stop_rx) = oneshot::channel();
         Recording {
             speedometer: speed_rx,
+            session,
             stop,
-            task: tokio::spawn(Self { speedometer }.run(fixes, stop_rx)),
+            task: tokio::spawn(Self { speedometer, correlator }.run(fixes, stop_rx)),
         }
     }
 
@@ -41,13 +50,19 @@ impl Recorder {
                 // Fires on `stop()` and when the `Recording` is dropped.
                 _ = &mut stop => break,
                 item = fixes.next() => match item {
-                    Some(Ok(fix)) => self.speedometer.on_fix(fix),
+                    Some(Ok(fix)) => {
+                        self.speedometer.on_fix(fix);
+                        if let Some(c) = &mut self.correlator {
+                            c.on_fix(fix);
+                        }
+                    }
                     Some(Err(e)) => tracing::warn!("skipping GPS error: {e}"),
                     None => break,
                 },
             }
         }
         RecordingSummary {
+            session: self.correlator.map(Correlator::into_session),
             speedometer: self.speedometer.snapshot(),
         }
     }
@@ -56,6 +71,8 @@ impl Recorder {
 /// Handle to a running recording. Dropping it stops the recording.
 pub struct Recording {
     pub speedometer: watch::Receiver<SpeedometerSnapshot>,
+    /// `None` when recording without a track.
+    pub session: Option<watch::Receiver<LiveSessionSnapshot>>,
     stop: oneshot::Sender<()>,
     task: JoinHandle<RecordingSummary>,
 }
@@ -69,6 +86,7 @@ impl Recording {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecordingSummary {
+    pub session: Option<Session>,
     pub speedometer: SpeedometerSnapshot,
 }
 
@@ -85,7 +103,7 @@ mod tests {
             Err(GpsError::DeviceNotFound),
             Ok(fix(1, 10.0)),
         ]);
-        let mut rec = Recorder::start(fixes.boxed());
+        let mut rec = Recorder::start(fixes.boxed(), None);
         while rec.speedometer.changed().await.is_ok() {} // closes when the stream ends
         let summary = rec.stop().await;
         assert_eq!(summary.speedometer.distance_m, 10.0);
@@ -93,14 +111,30 @@ mod tests {
 
     #[tokio::test]
     async fn stop_ends_endless_stream() {
-        let rec = Recorder::start(stream::pending().boxed());
+        let rec = Recorder::start(stream::pending().boxed(), None);
         assert_eq!(rec.stop().await.speedometer, SpeedometerSnapshot::default());
+    }
+
+    #[tokio::test]
+    async fn track_adds_session() {
+        use crate::track::{TrackShape, Waypoint};
+        let open = TrackShape::Open {
+            start: Waypoint::new(-8.9995, 38.7),
+            finish: Waypoint::new(-8.9985, 38.7),
+        };
+        let track = Track::builder("Line", open)
+            .waypoints([Waypoint::new(-9.0, 38.7), Waypoint::new(-8.998, 38.7)])
+            .build()
+            .unwrap();
+        let rec = Recorder::start(stream::pending().boxed(), Some(Arc::new(track)));
+        assert!(rec.session.is_some());
+        assert!(rec.stop().await.session.is_some());
     }
 
     #[tokio::test]
     async fn pushes_snapshots_then_closes() {
         let (tx, rx) = futures::channel::mpsc::unbounded();
-        let mut rec = Recorder::start(rx.boxed());
+        let mut rec = Recorder::start(rx.boxed(), None);
         tx.unbounded_send(Ok(fix(0, 12.0))).unwrap();
         rec.speedometer.changed().await.unwrap();
         assert_eq!(rec.speedometer.borrow().current_speed_ms, 12.0);
