@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use dioxus::prelude::*;
 use traced_core::track::LiveStatus;
 
-use super::{kmh, lap_time};
+use super::{kmh, lap_time, track_map::TrackMap};
 use crate::{recorder::RecorderCtx, Route};
 
 #[component]
@@ -32,15 +32,24 @@ pub fn Live() -> Element {
                 dt { "Avg" } dd { "{kmh(speed.average_speed_ms)} km/h" }
                 dt { "Distance" } dd { "{speed.distance_m / 1000.0:.2} km" }
             }
+            TrackMap {}
             if let Some(live) = *ctx.live.read() {
                 section { class: "session",
                     match live.status {
                         LiveStatus::Armed => rsx! { p { "Waiting for the start line…" } },
-                        LiveStatus::InProgress { anchor, sector } => rsx! {
-                            p { "Lap {live.laps + 1} · Sector {sector + 1}" }
-                            LiveClock { anchor }
+                        LiveStatus::InProgress { lap_anchor, sector_anchor, sector } => rsx! {
+                            p { "Lap {live.laps + 1}" }
+                            LiveClock { anchor: lap_anchor, class: "clock" }
+                            // Same color as the sector on the map.
+                            div { class: "sector-clock", style: "color: var(--sector-{sector % 4})",
+                                span { "Sector {sector + 1}" }
+                                LiveClock { anchor: sector_anchor, class: "clock small" }
+                            }
                         },
                         LiveStatus::Finished => rsx! { p { "Finished" } },
+                    }
+                    if let Some(last) = live.last_sector {
+                        p { "Last sector {lap_time(last.as_seconds_f64())}" }
                     }
                     if let Some(last) = live.last_lap {
                         p { "Last lap {lap_time(last.as_seconds_f64())}" }
@@ -64,7 +73,7 @@ pub fn Live() -> Element {
 
 /// Ticks at 10 Hz on its own, so only the clock text re-renders.
 #[component]
-fn LiveClock(anchor: Instant) -> Element {
+fn LiveClock(anchor: Instant, class: &'static str) -> Element {
     let mut now = use_signal(Instant::now);
     use_future(move || async move {
         loop {
@@ -73,6 +82,6 @@ fn LiveClock(anchor: Instant) -> Element {
         }
     });
     rsx! {
-        p { class: "clock", {lap_time(now().saturating_duration_since(anchor).as_secs_f64())} }
+        p { class, {lap_time(now().saturating_duration_since(anchor).as_secs_f64())} }
     }
 }

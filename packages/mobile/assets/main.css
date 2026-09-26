@@ -1,6 +1,7 @@
 :root {
   --bg: #fafaf9; --fg: #1c1917; --muted: #78716c; --line: #e7e5e4;
   --accent: #ea580c; --stop: #dc2626;
+  --sector-0: #2563eb; --sector-1: #16a34a; --sector-2: #9333ea; --sector-3: #0891b2;
 }
 @media (prefers-color-scheme: dark) {
   :root { --bg: #0c0a09; --fg: #fafaf9; --muted: #a8a29e; --line: #292524; }
@@ -30,9 +31,20 @@ button.stop { background: var(--stop); }
 .session { border-top: 1px solid var(--line); padding-top: 16px; text-align: center; }
 .session p { margin: 4px 0; }
 .clock { font: 700 3rem system-ui; font-variant-numeric: tabular-nums; }
+.clock.small { font-size: 1.75rem; }
+.sector-clock { display: flex; justify-content: center; align-items: baseline; gap: 12px; font-weight: 600; }
 
 .laps { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .laps th, .laps td { padding: 8px 4px; border-bottom: 1px solid var(--line); text-align: left; }
 .laps th { color: var(--muted); font-weight: 500; }
 .gap { color: var(--accent); }
 .note { color: var(--muted); text-align: center; margin: 0; }
+
+.track-map { width: 100%; max-height: 45vh; }
+.track-map .outline { fill: none; stroke: var(--line); stroke-width: 6px; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.track-map .sector { fill: none; stroke-width: 6px; stroke-opacity: 0.35; stroke-linejoin: round; vector-effect: non-scaling-stroke; transition: stroke-opacity 0.3s; }
+.track-map .sector.current { stroke-opacity: 0.9; }
+.track-map .gate { stroke: var(--muted); stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.track-map .gate.boundary { stroke: var(--fg); stroke-width: 3px; }
+/* Glides over one fix interval (1 s on the mock), so it trails the latest fix by up to that. */
+.track-map .you { fill: var(--accent); stroke: var(--bg); stroke-width: 2px; vector-effect: non-scaling-stroke; transition: transform 1s linear; }

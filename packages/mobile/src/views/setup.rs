@@ -1,6 +1,10 @@
 use dioxus::prelude::*;
 
-use crate::{recorder::RecorderCtx, tracks::TRACKS, Route};
+use crate::{
+    recorder::RecorderCtx,
+    tracks::{Preset, TRACKS},
+    Route,
+};
 
 #[component]
 pub fn Setup() -> Element {
@@ -27,7 +31,7 @@ pub fn Setup() -> Element {
                     "No track"
                     small { "Speedometer only" }
                 }
-                for (i, track) in TRACKS.iter().enumerate() {
+                for (i, Preset { track, .. }) in TRACKS.iter().enumerate() {
                     li {
                         class: if selected() == Some(i) { "selected" },
                         onclick: move |_| selected.set(Some(i)),
@@ -38,7 +42,7 @@ pub fn Setup() -> Element {
             }
             button {
                 onclick: move |_| {
-                    ctx.start(selected().map(|i| TRACKS[i].clone()));
+                    ctx.start(selected().map(|i| &TRACKS[i]));
                     navigator().push(Route::Live {});
                 },
                 "Start"

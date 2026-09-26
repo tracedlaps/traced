@@ -2,8 +2,14 @@ use std::sync::{Arc, LazyLock};
 
 use traced_core::track::{Track, TrackShape, Waypoint};
 
-/// Tracks available to record against. In code until tracks can be authored and saved.
-pub static TRACKS: LazyLock<Vec<Arc<Track>>> = LazyLock::new(|| {
+/// A track available to record against. In code until tracks can be authored and saved.
+pub struct Preset {
+    pub track: Arc<Track>,
+    /// How fast the mock GPS drives it, until a real provider exists.
+    pub mock_speed_kmh: f64,
+}
+
+pub static TRACKS: LazyLock<Vec<Preset>> = LazyLock::new(|| {
     // ~170 m x 110 m loop in Lisbon, gate and a sector midway along the first two legs.
     let lisbon = Track::builder(
         "Lisbon test loop",
@@ -33,21 +39,27 @@ pub static TRACKS: LazyLock<Vec<Arc<Track>>> = LazyLock::new(|| {
     .build()
     .expect("valid track");
 
-    // Speedtrike descent, top to bottom in file order; no sectors.
+    // Speedtrike descent, top to bottom in file order; sectors start at waypoints 1, 13 and 28.
     let trike = waypoints(include_str!("../tracks/senhora_da_lage.csv"));
     let shape = TrackShape::Open {
         start: trike[0],
         finish: trike[trike.len() - 1],
     };
     let senhora_da_lage = Track::builder("Senhora da Lage Trike Descent", shape)
+        .sector_gate_at(trike[12])
+        .sector_gate_at(trike[27])
         .waypoints(trike)
         .build()
         .expect("valid track");
 
+    let preset = |track, mock_speed_kmh| Preset {
+        track: Arc::new(track),
+        mock_speed_kmh,
+    };
     vec![
-        Arc::new(mondercange),
-        Arc::new(senhora_da_lage),
-        Arc::new(lisbon),
+        preset(mondercange, 50.0),
+        preset(senhora_da_lage, 90.0),
+        preset(lisbon, 36.0),
     ]
 });
 
@@ -69,14 +81,14 @@ mod tests {
 
     #[test]
     fn tracks_build() {
-        let mondercange = &TRACKS[0];
+        let mondercange = &TRACKS[0].track;
         let sectors: Vec<_> = mondercange.sectors().map(|s| s.length.round()).collect();
         assert_eq!(mondercange.waypoints.len(), 41);
         assert_eq!(sectors.len(), 3);
         assert!((mondercange.length() - 856.0).abs() < 5.0, "{sectors:?}");
 
-        let descent = &TRACKS[1];
-        assert_eq!(descent.sectors().count(), 1);
+        let descent = &TRACKS[1].track;
+        assert_eq!(descent.sectors().count(), 3);
         assert!((descent.length() - 2553.0).abs() < 5.0);
     }
 }
