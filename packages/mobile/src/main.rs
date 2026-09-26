@@ -1,18 +1,21 @@
 use dioxus::prelude::*;
 
-use ui::Navbar;
-use views::{Blog, Home};
+use recorder::RecorderCtx;
+use views::{Live, Results, Setup};
 
+mod recorder;
+mod tracks;
 mod views;
 
 #[derive(Debug, Clone, Routable, PartialEq)]
 #[rustfmt::skip]
 enum Route {
-    #[layout(MobileNavbar)]
     #[route("/")]
-    Home {},
-    #[route("/blog/:id")]
-    Blog { id: i32 },
+    Setup {},
+    #[route("/live")]
+    Live {},
+    #[route("/results")]
+    Results {},
 }
 
 const MAIN_CSS: Asset = asset!("/assets/main.css");
@@ -23,32 +26,11 @@ fn main() {
 
 #[component]
 fn App() -> Element {
-    // Build cool things ✌️
+    // Root-owned, so a recording survives moving between screens.
+    use_context_provider(RecorderCtx::new);
 
     rsx! {
-        // Global app resources
-        document::Link { rel: "stylesheet", href: MAIN_CSS }
-
+        document::Stylesheet { href: MAIN_CSS }
         Router::<Route> {}
-    }
-}
-
-/// A mobile-specific Router around the shared `Navbar` component
-/// which allows us to use the mobile-specific `Route` enum.
-#[component]
-fn MobileNavbar() -> Element {
-    rsx! {
-        Navbar {
-            Link {
-                to: Route::Home {},
-                "Home"
-            }
-            Link {
-                to: Route::Blog { id: 1 },
-                "Blog"
-            }
-        }
-
-        Outlet::<Route> {}
     }
 }

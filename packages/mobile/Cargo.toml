@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-dioxus = { workspace = true, features = ["router", "fullstack"] }
-ui = { workspace = true }
+dioxus = { workspace = true, features = ["router"] }
+traced_core = { workspace = true }
+tokio = { version = "1", features = ["time", "sync"] }
 
 [features]
 default = []
 mobile = ["dioxus/mobile"]
-server = ["dioxus/server", "ui/server"]
+desktop = ["dioxus/desktop"]
