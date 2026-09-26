@@ -89,4 +89,6 @@ The short version, for anyone picking this up:
 
 `recorder` + `speedometer` implemented (2026-09-26): `FixConsumer`, `Speedometer` (trapezoid `speed_ms × dt`, 5 s gap skip, >25 m accuracy reject; the `watch::Sender` holds the snapshot, stored `average_speed_ms` = distance ÷ integrated time, excluding dropouts), `Recorder::start(fixes) -> Recording`, `Recording::stop() -> RecordingSummary`. No `Correlator` slot yet. `traced_cli` records the mock stream until Ctrl-C.
 
-Next up: implement the Correlator (02) and Session/Lap/Run (03), then add `Option<Correlator>` + `session` receiver to the Recorder per 06.
+`track::session` implemented (2026-09-26): `Session { track_id, completed: Completed::{Laps(Vec<Lap>), Run(Option<Run>)} }`, `Run = Lap` (same shape), `Lap` holds GPS-time `crossings` in `gates_ordered` order + `gps_gap`; `duration()`/`splits()` derived. `Session::record` and `Lap::new` are crate-private, for the Correlator.
+
+Next up: implement the Correlator (02), then add `Option<Correlator>` + `session` receiver to the Recorder per 06.

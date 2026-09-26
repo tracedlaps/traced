@@ -1,3 +1,6 @@
+mod session;
+pub use session::{Completed, Lap, Run, Session};
+
 use geo::{Coord, Densify, Euclidean, Length, Line, Point, coord};
 use uuid::Uuid;
 
