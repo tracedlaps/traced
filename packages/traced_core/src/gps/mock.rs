@@ -110,14 +110,32 @@ impl MockGPSProvider {
 
     /// Drives `track` at a constant ~`speed_ms`, one fix per `config.interval`: endless laps
     /// on a Closed track (overrides `loop_fixes`), a single pass on an Open one.
-    /// Speed is nudged so a lap is a whole number of fixes, which keeps lap times exact.
+    /// Speed is nudged so a lap/run is a whole number of fixes, which keeps its time exact.
+    /// Fixes sit half a fix either side of each gate, so the first fix is just before the
+    /// start line and an Open run carries straight on past its gates' ends.
     pub fn drive(track: &Track, speed_ms: f64, mut config: MockGPSConfig) -> Self {
-        let closed = matches!(track.boundary, Boundary::Closed { .. });
         let length = track.length();
-        let n = (length / (speed_ms * config.interval.as_secs_f64())).round().max(1.0) as usize;
-        let step = length / n as f64;
-        // A Closed lap's last point is its first, so it's left out.
-        let points: Vec<_> = (0..n + usize::from(!closed)).map(|i| track.point_at(i as f64 * step)).collect();
+        let (start, span) = match &track.boundary {
+            Boundary::Closed { gate } => (gate.distance_along_track, length),
+            Boundary::Open { start, finish } => (start.distance_along_track, finish.distance_along_track - start.distance_along_track),
+        };
+        let n = (span / (speed_ms * config.interval.as_secs_f64())).round().max(1.0) as usize;
+        let step = span / n as f64;
+        let at = |d: f64| match &track.boundary {
+            Boundary::Closed { .. } => track.point_at(d.rem_euclid(length)),
+            Boundary::Open { start, finish } => {
+                // Run-up/run-out: straight on along the nearest boundary gate's direction.
+                let gate = match d {
+                    d if d < start.distance_along_track => start,
+                    d if d > finish.distance_along_track => finish,
+                    d => return track.point_at(d),
+                };
+                track.projection.unproject((gate.center.0 + gate.direction * (d - gate.distance_along_track)).into())
+            }
+        };
+        // A Closed lap's last point is its first; an Open run adds its run-up and run-out.
+        let closed = matches!(track.boundary, Boundary::Closed { .. });
+        let points: Vec<_> = (0..n + 2 * usize::from(!closed)).map(|i| at(start + (i as f64 - 0.5) * step)).collect();
         let fixes = points
             .iter()
             .enumerate()
@@ -184,14 +202,37 @@ mod tests {
         assert_eq!(n, (track.length() / 10.0).round() as usize);
         assert!(mock.config.loop_fixes);
 
-        // Two laps and a bit, one fix per second.
+        // Starts just before the gate: two laps and a bit, one fix per second.
         let (mut c, _rx) = Correlator::new(std::sync::Arc::new(track));
         for (i, fix) in mock.fixes.iter().cycle().take(2 * n + 2).enumerate() {
             c.on_fix(GPSFix { timestamp: DateTime::UNIX_EPOCH + TimeDelta::seconds(i as i64), ..*fix });
         }
         let Completed::Laps(laps) = c.into_session().completed else { panic!("closed track") };
-        assert_eq!(laps.len(), 1);
-        assert!((laps[0].duration() - TimeDelta::seconds(n as i64)).abs() < TimeDelta::milliseconds(1));
+        assert_eq!(laps.len(), 2);
+        let first = laps[0].crossings()[0] - DateTime::UNIX_EPOCH;
+        assert!((first - TimeDelta::milliseconds(500)).abs() < TimeDelta::milliseconds(1));
+        for lap in &laps {
+            assert!((lap.duration() - TimeDelta::seconds(n as i64)).abs() < TimeDelta::milliseconds(1));
+        }
+    }
+
+    #[test]
+    fn drive_times_an_open_run() {
+        // 200 m straight east with gates at both ends: the run needs a run-up and a run-out.
+        let open = TrackShape::Open { start: Waypoint::new(-9.0, 38.7), finish: Waypoint::new(-8.99769, 38.7) };
+        let track = Track::builder("Line", open)
+            .waypoints([Waypoint::new(-9.0, 38.7), Waypoint::new(-8.99769, 38.7)])
+            .build()
+            .unwrap();
+        let mock = MockGPSProvider::drive(&track, 10.0, MockGPSConfig::default());
+        assert!(!mock.config.loop_fixes);
+
+        let (mut c, _rx) = Correlator::new(std::sync::Arc::new(track));
+        for (i, fix) in mock.fixes.iter().enumerate() {
+            c.on_fix(GPSFix { timestamp: DateTime::UNIX_EPOCH + TimeDelta::seconds(i as i64), ..*fix });
+        }
+        let Completed::Run(Some(run)) = c.into_session().completed else { panic!("no run") };
+        assert!((run.duration() - TimeDelta::seconds(mock.fixes.len() as i64 - 2)).abs() < TimeDelta::milliseconds(1));
     }
 
     #[test]
