@@ -1,4 +1,5 @@
 use dioxus::{core::spawn_forever, prelude::*};
+use dioxus_i18n::t;
 
 use super::{
     editor::{Draft, Editor},
@@ -38,7 +39,7 @@ pub fn RecordTrack() -> Element {
             Some(&first) => street_at(first.into()).await,
             None => None,
         };
-        traced.set(Some(Draft::imported(name.unwrap_or_else(|| "Recorded track".into()), w)));
+        traced.set(Some(Draft::imported(name.unwrap_or_else(|| t!("recorded-track")), w)));
     };
     let cancel = move |_| async move {
         ctx.end_capture().await;
@@ -59,19 +60,19 @@ pub fn RecordTrack() -> Element {
             div { class: "sheet form",
                 p { class: "note",
                     if stopping() {
-                        "Finishing…"
+                        {t!("finishing")}
                     } else if capturing {
-                        "Drive or walk the track. Stop at the end, or back at the start for a loop."
+                        {t!("record-hint")}
                     } else if error().is_none() {
-                        "Starting the GPS…"
+                        {t!("starting-gps")}
                     }
                 }
                 if let Some(e) = error() {
                     p { class: "error", "{e}" }
                     div { class: "row",
-                        button { onclick: move |_| start(), "Try again" }
+                        button { onclick: move |_| start(), {t!("try-again")} }
                         if *ctx.permission.read() == Some(Permission::Blocked) {
-                            button { class: "button secondary", onclick: move |_| ctx.open_settings(), "Open settings" }
+                            button { class: "button secondary", onclick: move |_| ctx.open_settings(), {t!("open-settings")} }
                         }
                     }
                 }
@@ -80,9 +81,9 @@ pub fn RecordTrack() -> Element {
                     button {
                         disabled: stopping() || view.read().trace.len() < 2,
                         onclick: stop,
-                        "Stop"
+                        {t!("stop")}
                     }
-                    button { class: "button secondary", disabled: stopping(), onclick: cancel, "Cancel" }
+                    button { class: "button secondary", disabled: stopping(), onclick: cancel, {t!("cancel")} }
                 }
             }
         }

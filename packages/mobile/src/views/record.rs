@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use dioxus::prelude::*;
+use dioxus_i18n::t;
 use traced_core::{timing::best_lap, track::Track};
 
 use super::{gps_status, lap_time, refusal, timed_m};
@@ -15,16 +16,16 @@ pub fn Tracks() -> Element {
     if tracks.read().is_empty() {
         return rsx! {
             main {
-                h1 { "Tracks" }
-                p { class: "note", "No tracks yet." }
-                Link { class: "button", to: Route::Import {}, "Import a track" }
+                h1 { {t!("tracks")} }
+                p { class: "note", {t!("no-tracks")} }
+                Link { class: "button", to: Route::Import {}, {t!("import-a-track")} }
             }
         };
     }
 
     rsx! {
         main {
-            h1 { "Tracks" }
+            h1 { {t!("tracks")} }
             ul { class: "tracks scroll",
                 for (i, track) in tracks.read().iter().enumerate() {
                     li {
@@ -32,16 +33,16 @@ pub fn Tracks() -> Element {
                         onclick: move |_| selected.set(i),
                         "{track.name}"
                         small {
-                            "{timed_m(track):.0} m · {track.sectors().count()} sectors"
+                            "{timed_m(track):.0} m · " {t!("sector-count", count: track.sectors().count())}
                             if let Some((_, pb)) = best_lap(&recordings, track.uuid) {
-                                " · PB {lap_time(pb.duration().as_seconds_f64())}"
+                                " · " {t!("pb")} " {lap_time(pb.duration().as_seconds_f64())}"
                             }
                         }
                     }
                 }
             }
             if let Some(t) = tracks.read().get(selected()) {
-                Link { class: "button secondary", to: Route::EditTrack { id: t.uuid }, "Edit track" }
+                Link { class: "button secondary", to: Route::EditTrack { id: t.uuid }, {t!("edit-track")} }
             }
             StartPanel { track: Some(selected()) }
         }
@@ -52,10 +53,10 @@ pub fn Tracks() -> Element {
 pub fn Speedometer() -> Element {
     rsx! {
         main {
-            h1 { "Speedometer" }
+            h1 { {t!("speedometer")} }
             div { class: "speed idle scroll",
                 span { "0" }
-                small { "km/h · top, average and distance, no track" }
+                small { {t!("speedometer-idle")} }
             }
             StartPanel { track: None }
         }
@@ -75,11 +76,11 @@ fn StartPanel(track: Option<usize>) -> Element {
         section { class: "gps",
             p { {gps_status(*ctx.status.read())} }
             match *ctx.permission.read() {
-                Some(Permission::Denied) => rsx! { small { "Location permission is asked for on Start" } },
-                Some(Permission::Granted) => rsx! { small { "Location permission granted" } },
+                Some(Permission::Denied) => rsx! { small { {t!("permission-ask")} } },
+                Some(Permission::Granted) => rsx! { small { {t!("permission-granted")} } },
                 Some(Permission::Blocked) => rsx! {
-                    small { "Location permission is blocked. Allow it in Settings, then Start again." }
-                    button { onclick: move |_| ctx.open_settings(), "Open settings" }
+                    small { {t!("permission-blocked")} }
+                    button { onclick: move |_| ctx.open_settings(), {t!("open-settings")} }
                 },
                 None => rsx! {},
             }
@@ -88,14 +89,14 @@ fn StartPanel(track: Option<usize>) -> Element {
             }
             if cfg!(target_os = "android") {
                 details {
-                    summary { "Developer" }
+                    summary { {t!("developer")} }
                     label {
                         input { r#type: "checkbox", checked: use_mock(), onchange: move |e| use_mock.set(e.checked()) }
-                        "Mock drive instead of the GPS"
+                        {t!("mock-drive")}
                     }
                     label {
                         input { r#type: "checkbox", checked: force_lm(), onchange: move |e| force_lm.set(e.checked()) }
-                        "LocationManager instead of Fused"
+                        {t!("force-location-manager")}
                     }
                 }
             }
@@ -112,7 +113,7 @@ fn StartPanel(track: Option<usize>) -> Element {
                     Err(e) => refused.set(Some(refusal(e))),
                 }
             },
-            "Start"
+            {t!("start")}
         }
     }
 }

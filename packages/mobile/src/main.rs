@@ -9,6 +9,7 @@ use views::{
 #[cfg(target_os = "android")]
 mod android;
 mod gps;
+mod i18n;
 mod recorder;
 mod storage;
 mod tracks;
@@ -50,6 +51,7 @@ fn main() {
 
 #[component]
 fn App() -> Element {
+    i18n::use_translations();
     // Root-owned, so a recording survives moving between screens.
     use_context_provider(RecorderCtx::new);
     let tracks = use_signal(storage::load_tracks);

@@ -1,4 +1,5 @@
 use dioxus::{document::Eval, prelude::*};
+use dioxus_i18n::t;
 use serde::{Deserialize, Serialize};
 use traced_core::track::Waypoint;
 
@@ -130,13 +131,13 @@ pub fn Map(view: ReadSignal<View>, on_event: EventHandler<MapEvent>, #[props(def
     };
     use_effect(move || send(ToMap::View(view())));
     let find_me = move || async move {
-        note.set(Some("Finding your location…".into()));
+        note.set(Some(t!("finding-location")));
         match ctx.locate().await {
             Some(fix) => {
                 note.set(None);
                 send(ToMap::Fly(LatLng { lat: fix.latitude, lng: fix.longitude }));
             }
-            None => note.set(Some("Couldn't find your location.".into())),
+            None => note.set(Some(t!("location-not-found"))),
         }
     };
 
@@ -156,12 +157,12 @@ pub fn Map(view: ReadSignal<View>, on_event: EventHandler<MapEvent>, #[props(def
                     while let Ok(msg) = eval.recv::<FromMap>().await {
                         match msg {
                             FromMap::Edit(e) => on_event(e),
-                            FromMap::Search(SearchReply::Results(r)) if r.is_empty() => note.set(Some("No places found.".into())),
+                            FromMap::Search(SearchReply::Results(r)) if r.is_empty() => note.set(Some(t!("no-places"))),
                             FromMap::Search(SearchReply::Results(r)) => {
                                 note.set(None);
                                 results.set(r);
                             }
-                            FromMap::Search(SearchReply::SearchFailed(e)) => note.set(Some(format!("Search failed: {e}"))),
+                            FromMap::Search(SearchReply::SearchFailed(e)) => note.set(Some(t!("search-failed", error: e))),
                         }
                     }
                 },
@@ -178,7 +179,7 @@ pub fn Map(view: ReadSignal<View>, on_event: EventHandler<MapEvent>, #[props(def
                 },
                 input {
                     r#type: "search",
-                    placeholder: "Search for a place",
+                    placeholder: t!("search-place"),
                     value: "{query}",
                     oninput: move |e| query.set(e.value()),
                 }
@@ -208,13 +209,13 @@ pub fn Map(view: ReadSignal<View>, on_event: EventHandler<MapEvent>, #[props(def
                         send(ToMap::Layer(next));
                     },
                     match layer() {
-                        Layer::Satellite => "Streets",
-                        Layer::Streets => "Satellite",
+                        Layer::Satellite => t!("layer-streets"),
+                        Layer::Streets => t!("layer-satellite"),
                     }
                 }
-                button { onclick: move |_| find_me(), "My location" }
+                button { onclick: move |_| find_me(), {t!("my-location")} }
                 if !view.read().points.is_empty() {
-                    button { onclick: move |_| send(ToMap::Fit), "Fit track" }
+                    button { onclick: move |_| send(ToMap::Fit), {t!("fit-track")} }
                 }
             }
         }

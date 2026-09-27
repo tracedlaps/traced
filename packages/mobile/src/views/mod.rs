@@ -18,17 +18,39 @@ pub use results::Results;
 pub use shell::Shell;
 use chrono::TimeDelta;
 use dioxus::prelude::*;
+use dioxus_i18n::t;
 use traced_core::{
     gps::{GpsError, GpsStatus},
-    track::Track,
+    track::{import::ImportError, Track, TrackBuildError},
 };
 
 /// Why the GPS couldn't start, for the user.
 fn refusal(e: GpsError) -> String {
     match e {
-        GpsError::PermissionDenied => "Location permission denied. It's needed to record.".into(),
-        GpsError::LocationDisabled => "Location is turned off. Turn it on to record.".into(),
-        e => e.to_string(),
+        GpsError::PermissionDenied => t!("gps-permission-denied"),
+        GpsError::LocationDisabled => t!("gps-location-disabled"),
+        GpsError::DeviceNotFound => t!("gps-no-device"),
+        GpsError::Unavailable(detail) => t!("gps-unavailable", detail: detail),
+    }
+}
+
+/// Why a track doesn't build, for the user.
+fn track_error(e: &TrackBuildError) -> String {
+    match *e {
+        TrackBuildError::TooFewWaypoints => t!("too-few-waypoints"),
+        TrackBuildError::PlacementOffTrack { distance } => t!("placement-off-track", distance: format!("{distance:.0}")),
+        TrackBuildError::PlacementBeyondTrack { overshoot } => t!("placement-beyond-track", distance: format!("{overshoot:.0}")),
+        TrackBuildError::FinishBeforeStart => t!("finish-before-start"),
+        TrackBuildError::SectorOutsideTrack { .. } => t!("sector-outside"),
+    }
+}
+
+/// Why a file doesn't import, for the user.
+fn import_error(e: &ImportError) -> String {
+    match e {
+        ImportError::Unrecognised => t!("import-unrecognised"),
+        ImportError::BadLine(line) => t!("import-bad-line", line: *line),
+        ImportError::Xml(e) => t!("import-bad-xml", detail: e.to_string()),
     }
 }
 
@@ -58,15 +80,11 @@ fn kmh(speed_ms: impl Into<f64>) -> String {
 
 fn gps_status(status: Option<GpsStatus>) -> String {
     match status {
-        None | Some(GpsStatus::Disconnected) => "GPS off".into(),
-        Some(GpsStatus::Connecting) => "GPS connecting…".into(),
-        Some(GpsStatus::Searching) => "No GPS fix".into(),
-        Some(GpsStatus::Fixed {
-            satellites,
-            accuracy_m,
-            source,
-        }) => {
-            format!("GPS fix · {source:?} · {satellites} satellites · ±{accuracy_m:.0} m")
+        None | Some(GpsStatus::Disconnected) => t!("gps-off"),
+        Some(GpsStatus::Connecting) => t!("gps-connecting"),
+        Some(GpsStatus::Searching) => t!("gps-no-fix"),
+        Some(GpsStatus::Fixed { satellites, accuracy_m, source }) => {
+            t!("gps-fix", source: format!("{source:?}"), satellites: satellites, accuracy: format!("{accuracy_m:.0}"))
         }
     }
 }

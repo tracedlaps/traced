@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use dioxus::prelude::*;
+use dioxus_i18n::t;
 use traced_core::track::Track;
 
 use crate::{recorder::RecorderCtx, storage};
@@ -11,13 +12,13 @@ pub fn Backup() -> Element {
     let mut tracks = use_context::<Signal<Vec<Arc<Track>>>>();
     // Restoring would pull the recording's row out from under it.
     let recording = use_context::<RecorderCtx>().recording.read().is_some();
-    // Last backup action's outcome.
+    // Last backup action's outcome: a message key, or the error.
     let mut status = use_signal(|| None::<Result<&str, String>>);
     let mut confirm_restore = use_signal(|| false);
 
     let export = move |_| async move {
         match storage::export_backup().await {
-            Ok(true) => status.set(Some(Ok("Backup saved."))),
+            Ok(true) => status.set(Some(Ok("backup-saved"))),
             Ok(false) => {}
             Err(e) => status.set(Some(Err(e))),
         }
@@ -27,7 +28,7 @@ pub fn Backup() -> Element {
         match storage::restore_backup().await {
             Ok(true) => {
                 tracks.set(storage::load_tracks());
-                status.set(Some(Ok("Backup restored.")));
+                status.set(Some(Ok("backup-restored")));
             }
             Ok(false) => {}
             Err(e) => status.set(Some(Err(e))),
@@ -36,24 +37,24 @@ pub fn Backup() -> Element {
 
     rsx! {
         section { class: "backup",
-            h2 { "Backup" }
-            p { class: "note", "Everything lives only on this phone. Export it to keep a copy." }
-            button { class: "button secondary", onclick: export, "Export backup" }
+            h2 { {t!("backup")} }
+            p { class: "note", {t!("backup-note")} }
+            button { class: "button secondary", onclick: export, {t!("export-backup")} }
             if confirm_restore() {
-                p { class: "error", "Restoring replaces every track and recording here with the backup's." }
-                button { class: "stop", onclick: restore, "Choose backup and replace" }
-                button { class: "button secondary", onclick: move |_| confirm_restore.set(false), "Cancel" }
+                p { class: "error", {t!("restore-warning")} }
+                button { class: "stop", onclick: restore, {t!("restore-choose")} }
+                button { class: "button secondary", onclick: move |_| confirm_restore.set(false), {t!("cancel")} }
             } else {
                 button {
                     class: "button secondary",
                     disabled: recording,
                     onclick: move |_| confirm_restore.set(true),
-                    "Restore backup"
+                    {t!("restore-backup")}
                 }
             }
             match status() {
-                Some(Ok(done)) => rsx! { p { class: "note", "{done}" } },
-                Some(Err(e)) => rsx! { p { class: "error", "{e}" } },
+                Some(Ok(done)) => rsx! { p { class: "note", {t!(done)} } },
+                Some(Err(e)) => rsx! { p { class: "error", {t!("backup-failed", error: e)} } },
                 None => rsx! {},
             }
         }

@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
 use dioxus::prelude::*;
+use dioxus_i18n::t;
 use traced_core::track::LiveStatus;
 
 use super::{gps_status, kmh, lap_time, track_map::TrackMap, Delta};
@@ -12,8 +13,8 @@ pub fn Live() -> Element {
     if ctx.recording.read().is_none() {
         return rsx! {
             main {
-                p { "Not recording." }
-                Link { class: "button", to: Route::Tracks {}, "New recording" }
+                p { {t!("not-recording")} }
+                Link { class: "button", to: Route::Tracks {}, {t!("new-recording")} }
             }
         };
     }
@@ -28,49 +29,49 @@ pub fn Live() -> Element {
                 small { "km/h" }
             }
             dl { class: "stats",
-                dt { "Top" } dd { "{kmh(speed.top_speed_ms)} km/h" }
-                dt { "Avg" } dd { "{kmh(speed.average_speed_ms)} km/h" }
-                dt { "Distance" } dd { "{speed.distance_m / 1000.0:.2} km" }
+                dt { {t!("stat-top")} } dd { "{kmh(speed.top_speed_ms)} km/h" }
+                dt { {t!("stat-avg")} } dd { "{kmh(speed.average_speed_ms)} km/h" }
+                dt { {t!("stat-distance")} } dd { "{speed.distance_m / 1000.0:.2} km" }
             }
             TrackMap {}
             if let Some(live) = *ctx.live.read() {
                 section { class: "session",
                     match live.status {
-                        LiveStatus::Armed => rsx! { p { "Waiting for the start line…" } },
+                        LiveStatus::Armed => rsx! { p { {t!("waiting-for-start")} } },
                         LiveStatus::InProgress { lap_anchor, sector_anchor, sector } => rsx! {
-                            p { "Lap {live.laps + 1}" }
+                            p { {t!("lap-n", n: live.laps + 1)} }
                             LiveClock { anchor: lap_anchor, class: "clock" }
                             if let Some(delta) = live.delta {
                                 div { class: "live-delta", Delta { delta } }
                             }
                             // Same color as the sector on the map.
                             div { class: "sector-clock", style: "color: var(--sector-{sector % 4})",
-                                span { "Sector {sector + 1}" }
+                                span { {t!("sector-n", n: sector + 1)} }
                                 LiveClock { anchor: sector_anchor, class: "clock small" }
                             }
                         },
-                        LiveStatus::Finished => rsx! { p { "Finished" } },
+                        LiveStatus::Finished => rsx! { p { {t!("finished")} } },
                     }
                     if let Some(last) = live.last_sector {
                         p {
-                            "Last sector {lap_time(last.as_seconds_f64())} "
+                            {t!("last-sector", time: lap_time(last.as_seconds_f64()))} " "
                             if let Some(delta) = live.last_sector_delta { Delta { delta } }
                         }
                     }
                     if let Some(last) = live.last_lap {
                         p {
-                            "Last lap {lap_time(last.as_seconds_f64())} "
+                            {t!("last-lap", time: lap_time(last.as_seconds_f64()))} " "
                             if let Some(delta) = live.last_lap_delta { Delta { delta } }
                         }
                     }
                     if let Some(best) = live.best {
-                        p { class: "best", "Best {lap_time(best.as_seconds_f64())}" }
+                        p { class: "best", {t!("best", time: lap_time(best.as_seconds_f64()))} }
                     }
                 }
             }
             p { class: "note", {gps_status(*ctx.status.read())} }
             if ended {
-                p { class: "note", "GPS stream ended. Stop to see the results." }
+                p { class: "note", {t!("gps-ended")} }
             }
             button {
                 class: "stop",
@@ -78,7 +79,7 @@ pub fn Live() -> Element {
                     ctx.stop();
                     navigator().push(Route::Results {});
                 },
-                "Stop"
+                {t!("stop")}
             }
         }
     }

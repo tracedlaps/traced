@@ -1,4 +1,5 @@
 use dioxus::prelude::*;
+use dioxus_i18n::t;
 use traced_core::{speedometer::SpeedometerSnapshot, timing::best_lap, track::Session};
 
 use super::{kmh, lap_time, Delta};
@@ -11,14 +12,14 @@ pub fn Results() -> Element {
     let Some(summary) = summary.as_ref() else {
         return rsx! {
             main {
-                p { if ctx.recording.read().is_some() { "Recording in progress." } else { "Finishing…" } }
+                p { if ctx.recording.read().is_some() { {t!("recording-in-progress")} } else { {t!("finishing")} } }
             }
         };
     };
 
     rsx! {
         main {
-            h1 { "Results" }
+            h1 { {t!("results")} }
             div { class: "scroll",
                 Report { speed: summary.speedometer, session: summary.session.clone() }
             }
@@ -34,30 +35,30 @@ pub fn Report(speed: SpeedometerSnapshot, session: Option<Session>) -> Element {
     let best = session.as_ref().and_then(|s| best_lap(&recordings, s.track_id)).map(|(_, lap)| lap);
     rsx! {
         dl { class: "stats",
-            dt { "Top" } dd { "{kmh(speed.top_speed_ms)} km/h" }
-            dt { "Avg" } dd { "{kmh(speed.average_speed_ms)} km/h" }
-            dt { "Distance" } dd { "{speed.distance_m / 1000.0:.2} km" }
-            dt { "Time" } dd { {lap_time(speed.elapsed.as_secs_f64())} }
+            dt { {t!("stat-top")} } dd { "{kmh(speed.top_speed_ms)} km/h" }
+            dt { {t!("stat-avg")} } dd { "{kmh(speed.average_speed_ms)} km/h" }
+            dt { {t!("stat-distance")} } dd { "{speed.distance_m / 1000.0:.2} km" }
+            dt { {t!("stat-time")} } dd { {lap_time(speed.elapsed.as_secs_f64())} }
         }
         if session.is_some() && laps.is_empty() {
-            p { "No completed laps." }
+            p { {t!("no-completed-laps")} }
         }
         if best.is_some_and(|b| laps.contains(b)) {
-            p { class: "pb", "Personal best on this track" }
+            p { class: "pb", {t!("personal-best")} }
         }
         if !laps.is_empty() {
             table { class: "laps",
-                tr { th { "#" } th { "Time" } th { "PB" } th { "Splits" } }
+                tr { th { "#" } th { {t!("stat-time")} } th { {t!("pb")} } th { {t!("splits")} } }
                 for (i, lap) in laps.iter().enumerate() {
                     tr {
                         td { "{i + 1}" }
                         td {
                             {lap_time(lap.duration().as_seconds_f64())}
-                            if lap.gps_gap { span { class: "gap", title: "GPS dropout during this lap", " ⚠" } }
+                            if lap.gps_gap { span { class: "gap", title: t!("gps-gap"), " ⚠" } }
                         }
                         td {
                             match best {
-                                Some(b) if b == lap => rsx! { span { class: "pb", "PB" } },
+                                Some(b) if b == lap => rsx! { span { class: "pb", {t!("pb")} } },
                                 Some(b) => rsx! { Delta { delta: lap.delta(b) } },
                                 None => rsx! {},
                             }

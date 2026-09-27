@@ -1,13 +1,14 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use dioxus::prelude::*;
+use dioxus_i18n::t;
 use traced_core::track::{import, Track, TrackBuilder, TrackShape, Waypoint};
 use uuid::Uuid;
 
 use super::{
     backup::Backup,
     map::{LatLng, Map, MapEvent, Overlay, View},
-    timed_m,
+    import_error, timed_m, track_error,
     track_map::Layout,
 };
 use crate::{recorder::RecorderCtx, storage, Route};
@@ -27,7 +28,7 @@ pub fn Import() -> Element {
             Ok(None) => {}
             Ok(Some(file)) => match std::fs::read_to_string(&file.path)
                 .map_err(|e| e.to_string())
-                .and_then(|text| import::waypoints(&text).map_err(|e| e.to_string()))
+                .and_then(|text| import::waypoints(&text).map_err(|e| import_error(&e)))
             {
                 Ok(w) => {
                     let stem = file.name.rsplit_once('.').map_or(&*file.name, |(stem, _)| stem);
@@ -42,17 +43,17 @@ pub fn Import() -> Element {
 
     rsx! {
         main { class: "form",
-            h1 { "Editor" }
+            h1 { {t!("editor")} }
             div { class: "scroll",
-                Link { class: "button", to: Route::NewTrack {}, "Create new track" }
-                Link { class: "button secondary", to: Route::RecordTrack {}, "Record a track" }
-                button { class: "button secondary", onclick: pick, "Import a CSV, GPX or KML file" }
+                Link { class: "button", to: Route::NewTrack {}, {t!("create-track")} }
+                Link { class: "button secondary", to: Route::RecordTrack {}, {t!("record-track")} }
+                button { class: "button secondary", onclick: pick, {t!("import-file")} }
                 if let Some(e) = error() {
                     p { class: "error", "{e}" }
                 }
                 if !tracks.read().is_empty() {
                     section { class: "backup",
-                        h2 { "Edit a saved track" }
+                        h2 { {t!("edit-saved-track")} }
                         ul { class: "tracks",
                             for t in tracks.read().iter() {
                                 li {
@@ -90,8 +91,8 @@ pub fn EditTrack(id: Uuid) -> Element {
         },
         None => rsx! {
             main { class: "form",
-                h1 { "Edit track" }
-                p { class: "note", "Track not found." }
+                h1 { {t!("edit-track")} }
+                p { class: "note", {t!("track-not-found")} }
             }
         },
     }
@@ -117,13 +118,13 @@ pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
     let preview = use_memo(move || {
         let d = draft.read();
         if d.waypoints.len() < 2 {
-            return (Err("Tap the map to add at least two waypoints.".into()), None);
+            return (Err(t!("too-few-waypoints")), None);
         }
         let built = d.builder(false).build();
         let summary = built
             .as_ref()
-            .map(|t| format!("{:.0} m · {} sectors", timed_m(t), t.sectors().count()))
-            .map_err(|e| e.to_string());
+            .map(|t| format!("{:.0} m · {}", timed_m(t), t!("sector-count", count: t.sectors().count())))
+            .map_err(track_error);
         // Still drawn when a placement is what fails, just with gates on the ends only.
         let track = built.ok().or_else(|| d.builder(true).build().ok());
         (summary, track.as_ref().map(overlay))
@@ -171,7 +172,7 @@ pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
             return;
         };
         if storage::put_track(&track).is_none() {
-            error.set(Some("Couldn't save the track.".into()));
+            error.set(Some(t!("save-failed")));
             return;
         }
         let built = Arc::new(built);
@@ -185,7 +186,7 @@ pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
     };
     let mut delete = move |id: Uuid| {
         if storage::delete_track(id).is_none() {
-            error.set(Some("Couldn't delete the track.".into()));
+            error.set(Some(t!("delete-failed")));
             return;
         }
         tracks.write().retain(|t| t.uuid != id);
@@ -193,12 +194,12 @@ pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
     };
     let closed = draft.read().closed;
     let modes: &[(Mode, &str)] = match closed {
-        true => &[(Mode::Draw, "Draw"), (Mode::Start, "Gate"), (Mode::Sector, "Sectors")],
+        true => &[(Mode::Draw, "mode-draw"), (Mode::Start, "mode-gate"), (Mode::Sector, "mode-sectors")],
         false => &[
-            (Mode::Draw, "Draw"),
-            (Mode::Start, "Start"),
-            (Mode::Finish, "Finish"),
-            (Mode::Sector, "Sectors"),
+            (Mode::Draw, "mode-draw"),
+            (Mode::Start, "mode-start"),
+            (Mode::Finish, "mode-finish"),
+            (Mode::Sector, "mode-sectors"),
         ],
     };
 
@@ -214,17 +215,17 @@ pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
                                 mode.set(m);
                                 selected.set(None);
                             },
-                            "{label}"
+                            {t!(label)}
                         }
                     }
                 }
                 p { class: "note",
-                    match mode() {
-                        Mode::Draw if selected().is_some() => "Drag it to move it, or delete it.",
-                        Mode::Draw => "Tap the map to add waypoints. Drag to move one, or drag a hollow one to insert it. Tap one to delete it.",
-                        Mode::Sector => "Tap waypoints to add or remove sector gates.",
-                        _ => "Tap a waypoint to move the gate there.",
-                    }
+                    {t!(match mode() {
+                        Mode::Draw if selected().is_some() => "hint-selected",
+                        Mode::Draw => "hint-draw",
+                        Mode::Sector => "hint-sectors",
+                        _ => "hint-gate",
+                    })}
                 }
                 div { class: "row",
                     button {
@@ -237,7 +238,7 @@ pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
                                 selected.set(None);
                             }
                         },
-                        "Undo"
+                        {t!("undo")}
                     }
                     if let Some(i) = selected() {
                         button {
@@ -248,12 +249,12 @@ pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
                                 selected.set(None);
                                 commit(d);
                             },
-                            "Delete point"
+                            {t!("delete-point")}
                         }
                     }
                 }
                 label { class: "field",
-                    "Name"
+                    {t!("name")}
                     input { r#type: "text", value: "{draft.read().name}", oninput: move |e| draft.write().name = e.value() }
                 }
                 label { class: "check",
@@ -267,7 +268,7 @@ pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
                             }
                         },
                     }
-                    "Closed loop, timed in laps"
+                    {t!("closed-loop")}
                 }
                 match preview().0 {
                     Ok(summary) => rsx! { small { "{summary}" } },
@@ -277,32 +278,28 @@ pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
                     p { class: "error", "{e}" }
                 }
                 if live {
-                    p { class: "note", "Stop the recording on this track to move its gates or delete it." }
+                    p { class: "note", {t!("live-track-locked")} }
                 }
                 div { class: "row",
                     button {
                         disabled: preview().0.is_err() || draft.read().name.trim().is_empty() || live && moved,
                         onclick: save,
-                        "Save track"
+                        {t!("save-track")}
                     }
                     button {
                         class: "button secondary",
                         onclick: move |_| on_close(()),
-                        if id.is_some() { "Cancel" } else { "Discard" }
+                        {t!(if id.is_some() { "cancel" } else { "discard" })}
                     }
                 }
                 if let Some(id) = id {
                     section { class: "backup",
                         if let Some(n) = confirm_delete() {
                             p { class: "error",
-                                match n {
-                                    0 => "Deletes the track.".to_string(),
-                                    1 => "Deletes the track and its recording.".into(),
-                                    n => format!("Deletes the track and its {n} recordings."),
-                                }
+                                {t!("delete-warning", count: n)}
                             }
-                            button { class: "stop", onclick: move |_| delete(id), "Delete track" }
-                            button { class: "button secondary", onclick: move |_| confirm_delete.set(None), "Keep track" }
+                            button { class: "stop", onclick: move |_| delete(id), {t!("delete-track")} }
+                            button { class: "button secondary", onclick: move |_| confirm_delete.set(None), {t!("keep-track")} }
                         } else {
                             button {
                                 class: "button secondary",
@@ -314,7 +311,7 @@ pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
                                         .count();
                                     confirm_delete.set(Some(n));
                                 },
-                                "Delete track"
+                                {t!("delete-track")}
                             }
                         }
                     }

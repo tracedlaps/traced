@@ -8,10 +8,13 @@ dioxus = { workspace = true, features = ["router"] }
 traced_core = { workspace = true }
 tokio = { version = "1", features = ["time", "sync", "rt"] }
 futures = "0.3"
-chrono = "0.4"
+chrono = { version = "0.4", features = ["unstable-locales"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = "1.26.1"
+dioxus-i18n = "0.5.1"
+sys-locale = "0.3.2"
+unic-langid = { version = "0.9.6", features = ["macros"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 manganis = "0.7.10"

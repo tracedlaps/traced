@@ -192,7 +192,7 @@ pub async fn pick_file() -> Result<Option<PickedFile>, String> {
 pub async fn export_backup() -> Result<bool, String> {
     let name = format!("traced-{}.db", chrono::Local::now().format("%Y-%m-%d"));
     let store = |path: PathBuf| {
-        with_store("export", |s| s.export(&path)).ok_or("Couldn't export the data.".to_string())
+        with_store("export", |s| s.export(&path)).ok_or("export failed".to_string())
     };
 
     #[cfg(target_os = "android")]

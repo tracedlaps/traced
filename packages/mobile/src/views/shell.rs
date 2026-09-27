@@ -1,4 +1,5 @@
 use dioxus::prelude::*;
+use dioxus_i18n::t;
 
 use crate::{recorder::RecorderCtx, Route};
 
@@ -17,15 +18,15 @@ pub fn Shell() -> Element {
     rsx! {
         div { class: "shell",
             if ctx.recording.read().is_some() {
-                Link { class: "live-bar", to: Route::Live {}, "Recording · back to live" }
+                Link { class: "live-bar", to: Route::Live {}, {t!("back-to-live")} }
             }
             Outlet::<Route> {}
             nav { class: "tabs",
-                Tab { to: Route::History {}, icon: HISTORY, label: "History",
+                Tab { to: Route::History {}, icon: HISTORY, label: t!("tab-history"),
                     active: matches!(route, Route::History {} | Route::SavedResults { .. }) }
-                Tab { to: Route::Tracks {}, icon: TRACKS, label: "Tracks", active: route == Route::Tracks {} }
-                Tab { to: Route::Speedometer {}, icon: SPEEDO, label: "Speed", active: route == Route::Speedometer {} }
-                Tab { to: Route::Import {}, icon: EDITOR, label: "Editor",
+                Tab { to: Route::Tracks {}, icon: TRACKS, label: t!("tab-tracks"), active: route == Route::Tracks {} }
+                Tab { to: Route::Speedometer {}, icon: SPEEDO, label: t!("tab-speed"), active: route == Route::Speedometer {} }
+                Tab { to: Route::Import {}, icon: EDITOR, label: t!("tab-editor"),
                     active: matches!(route, Route::Import {} | Route::NewTrack {} | Route::RecordTrack {} | Route::EditTrack { .. }) }
             }
         }
@@ -36,7 +37,7 @@ pub fn Shell() -> Element {
 fn Tab(
     to: Route,
     icon: &'static str,
-    label: &'static str,
+    label: String,
     active: bool,
 ) -> Element {
     rsx! {
