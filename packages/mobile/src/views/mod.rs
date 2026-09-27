@@ -2,12 +2,13 @@ mod backup;
 mod editor;
 mod history;
 mod live;
+mod map;
 mod record;
 mod results;
 mod shell;
 mod track_map;
 
-pub use editor::{EditTrack, Import};
+pub use editor::{EditTrack, Import, NewTrack};
 pub use history::{History, SavedResults};
 pub use live::Live;
 pub use record::{Speedometer, Tracks};

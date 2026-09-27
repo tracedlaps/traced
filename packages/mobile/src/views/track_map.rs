@@ -42,25 +42,10 @@ pub fn TrackMap() -> Element {
 /// in the same coordinates (see `svg_point`).
 #[component]
 pub fn TrackSvg(layout: Layout, current: Option<usize>, children: Element) -> Element {
+    let [x, y, w, h] = layout.view_box;
     rsx! {
-        svg { class: "track-map", view_box: "{layout.view_box}",
-            path { class: "outline", d: "{layout.outline}" }
-            for (k , d) in layout.sectors.into_iter().enumerate() {
-                path {
-                    class: if current == Some(k) { "sector current" } else { "sector" },
-                    style: "stroke: var(--sector-{k % 4})",
-                    d,
-                }
-            }
-            for ((x1 , y1) , (x2 , y2) , boundary) in layout.gates {
-                line {
-                    class: if boundary { "gate boundary" } else { "gate" },
-                    x1,
-                    y1,
-                    x2,
-                    y2,
-                }
-            }
+        svg { class: "track-map", view_box: "{x} {y} {w} {h}",
+            g { dangerous_inner_html: layout.markup(current) }
             {children}
         }
     }
@@ -68,7 +53,8 @@ pub fn TrackSvg(layout: Layout, current: Option<usize>, children: Element) -> El
 
 #[derive(Clone, PartialEq)]
 pub struct Layout {
-    view_box: String,
+    /// x, y, width, height.
+    pub view_box: [f64; 4],
     outline: String,
     /// One path per sector, in travel order.
     sectors: Vec<String>,
@@ -132,18 +118,33 @@ impl Layout {
         let pad = extent * 0.05;
 
         Self {
-            view_box: format!(
-                "{} {} {} {}",
+            view_box: [
                 min_x - pad,
                 min_y - pad,
                 max_x - min_x + 2.0 * pad,
-                max_y - min_y + 2.0 * pad
-            ),
+                max_y - min_y + 2.0 * pad,
+            ],
             outline: path(0, curves.len()) + if closed { " Z" } else { "" },
             sectors,
             gates,
             dot_r: extent / 50.0,
         }
+    }
+}
+
+impl Layout {
+    /// The outline, sectors (`current` highlighted) and gates as SVG elements, for `TrackSvg`
+    /// and the map editor's overlay alike.
+    pub fn markup(&self, current: Option<usize>) -> String {
+        let sectors = self.sectors.iter().enumerate().map(|(k, d)| {
+            let class = if current == Some(k) { "sector current" } else { "sector" };
+            format!(r#"<path class="{class}" style="stroke: var(--sector-{})" d="{d}"/>"#, k % 4)
+        });
+        let gates = self.gates.iter().map(|&((x1, y1), (x2, y2), boundary)| {
+            let class = if boundary { "gate boundary" } else { "gate" };
+            format!(r#"<line class="{class}" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"/>"#)
+        });
+        format!(r#"<path class="outline" d="{}"/>"#, self.outline) + &sectors.chain(gates).collect::<String>()
     }
 }
 
@@ -303,7 +304,7 @@ mod tests {
                 .collect();
             let svg = format!(
                 r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{}" width="800" style="background:white">{}{sectors}</svg>"#,
-                l.view_box,
+                l.view_box.map(|v| v.to_string()).join(" "),
                 stroke(&l.outline, "#e7e5e4", 1.0),
             );
             std::fs::write(

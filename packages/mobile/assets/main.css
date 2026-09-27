@@ -90,3 +90,34 @@ small.interrupted { color: var(--accent); }
 .form .field input { padding: 12px; border: 2px solid var(--line); border-radius: 12px; background: none; color: var(--fg); font: inherit; }
 .form .check { display: flex; gap: 8px; align-items: center; }
 .track-map .you { fill: var(--accent); stroke: var(--bg); stroke-width: 2px; vector-effect: non-scaling-stroke; transition: transform 1s linear; }
+.map-editor { padding: 0; gap: 0; max-width: none; }
+.map { position: relative; flex: 1; min-height: 0; display: flex; }
+#map { flex: 1; }
+.map-search { position: absolute; top: 12px; left: 12px; right: 12px; z-index: 1000; display: flex; flex-direction: column; gap: 4px; }
+.map-search input { padding: 12px; border: none; border-radius: 12px; background: var(--bg); color: var(--fg); font: inherit; box-shadow: 0 2px 8px #0004; }
+.map-search .note { padding: 8px 12px; border-radius: 12px; background: var(--bg); }
+.map-search ul { list-style: none; margin: 0; padding: 0; border-radius: 12px; background: var(--bg); overflow: hidden; box-shadow: 0 2px 8px #0004; }
+.map-search li { padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 0.9rem; cursor: pointer; }
+.map-search ul:empty { display: none; }
+.map-buttons { position: absolute; bottom: 24px; left: 12px; z-index: 1000; display: flex; gap: 8px; }
+.map-buttons button { width: auto; padding: 8px 14px; font-size: 0.9rem; box-shadow: 0 2px 8px #0004; }
+/* Markers: a 36px touch target around a smaller dot. */
+.leaflet-marker-icon.waypoint::after, .leaflet-marker-icon.midpoint::after { content: ""; position: absolute; inset: 9px; border-radius: 50%; background: white; border: 3px solid var(--muted); box-sizing: border-box; }
+.leaflet-marker-icon.waypoint.gate::after { background: var(--accent); border-color: white; }
+.leaflet-marker-icon.waypoint.start::after { background: #1c1917; border-color: white; }
+.leaflet-marker-icon.waypoint.finish::after { background: white; border: 5px solid #1c1917; }
+.leaflet-marker-icon.waypoint.selected::after { inset: 4px; box-shadow: 0 0 0 4px var(--accent); }
+.leaflet-marker-icon.midpoint::after { inset: 8px; background: #fff8; border: 2px dashed white; }
+.track-overlay { pointer-events: none; }
+.track-overlay .outline { fill: none; stroke: white; stroke-opacity: 0.5; stroke-width: 8px; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.track-overlay .sector { fill: none; stroke-width: 5px; stroke-opacity: 0.9; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.track-overlay .gate { stroke: white; stroke-width: 3px; vector-effect: non-scaling-stroke; }
+.track-overlay .gate.boundary { stroke: #1c1917; stroke-width: 4px; }
+.sheet { flex: none; max-height: 45%; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding: 16px; border-top: 1px solid var(--line); }
+.sheet > * { flex-shrink: 0; }
+.row { display: flex; gap: 8px; }
+.row > * { flex: 1; }
+.sheet button, .sheet .button { padding: 8px; font-size: 1rem; }
+.sheet .note { font-size: 0.85rem; }
+.sheet .field { flex-direction: row; align-items: center; gap: 8px; }
+.sheet .field input { flex: 1; padding: 8px 12px; }

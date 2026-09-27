@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use recorder::RecorderCtx;
 use uuid::Uuid;
-use views::{EditTrack, History, Import, Live, Results, SavedResults, Shell, Speedometer, Tracks};
+use views::{EditTrack, History, Import, Live, NewTrack, Results, SavedResults, Shell, Speedometer, Tracks};
 
 #[cfg(target_os = "android")]
 mod android;
@@ -26,6 +26,8 @@ enum Route {
         Speedometer {},
         #[route("/editor")]
         Import {},
+        #[route("/editor/new")]
+        NewTrack {},
         #[route("/editor/:id")]
         EditTrack { id: Uuid },
         #[route("/results")]

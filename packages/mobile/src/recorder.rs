@@ -3,7 +3,7 @@ use std::{convert::identity, sync::Arc};
 use chrono::Utc;
 
 use dioxus::{core::spawn_forever, prelude::*};
-use futures::stream::BoxStream;
+use futures::{stream::BoxStream, StreamExt};
 use tokio::sync::watch;
 use traced_core::{
     gps::{
@@ -152,6 +152,16 @@ impl RecorderCtx {
         let _ = gps.init();
         bridge(gps.status(), self.status, Some);
         gps.stream_fixes()
+    }
+
+    /// Where the phone is: the recording's latest fix, or the device GPS's first, if one comes soon.
+    pub async fn locate(self) -> Option<GPSFix> {
+        if self.recording.peek().is_some() {
+            return *self.fix.peek();
+        }
+        let mut fixes = self.device_fixes().await.ok()??;
+        let first = async { while let Some(fix) = fixes.next().await { if let Ok(fix) = fix { return Some(fix) } } None };
+        tokio::time::timeout(std::time::Duration::from_secs(20), first).await.ok()?
     }
 
     /// The device GPS's fixes, unless there is none or the mock is switched on.
