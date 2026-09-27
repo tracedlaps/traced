@@ -25,7 +25,8 @@ pub fn Shell() -> Element {
                     active: matches!(route, Route::History {} | Route::SavedResults { .. }) }
                 Tab { to: Route::Tracks {}, icon: TRACKS, label: "Tracks", active: route == Route::Tracks {} }
                 Tab { to: Route::Speedometer {}, icon: SPEEDO, label: "Speed", active: route == Route::Speedometer {} }
-                Tab { to: Route::Import {}, icon: EDITOR, label: "Editor", active: route == Route::Import {} }
+                Tab { to: Route::Import {}, icon: EDITOR, label: "Editor",
+                    active: matches!(route, Route::Import {} | Route::EditTrack { .. }) }
             }
         }
     }

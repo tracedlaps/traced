@@ -119,6 +119,16 @@ pub fn put_track(track: &TrackBuilder) -> Option<()> {
     with_store("save track", |s| s.put_track(track))
 }
 
+/// Saved track `id`'s spec, to edit.
+pub fn load_spec(id: Uuid) -> Option<TrackBuilder> {
+    with_store("load track", |s| s.track(id)).flatten()
+}
+
+/// Deletes track `id` and its recordings. `None` if it couldn't.
+pub fn delete_track(id: Uuid) -> Option<()> {
+    with_store("delete track", |s| s.delete_track(id))
+}
+
 /// Saves each fix as it arrives, so a crash loses at most the one being written.
 struct Journal(Uuid);
 

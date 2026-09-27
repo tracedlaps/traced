@@ -76,6 +76,10 @@ small.interrupted { color: var(--accent); }
 /* Glides over one fix interval (1 s on the mock), so it trails the latest fix by up to that. */
 .track-map .waypoint { fill: var(--bg); stroke: var(--muted); stroke-width: 2px; vector-effect: non-scaling-stroke; cursor: pointer; }
 .track-map .waypoint.gate { fill: var(--accent); stroke: var(--accent); }
+.track-map .waypoint.start, .track-map .waypoint.finish { fill: var(--fg); stroke: var(--fg); }
+.track-map .waypoint.finish { fill: var(--bg); stroke-width: 4px; }
+.modes { display: flex; gap: 8px; }
+.modes .button { padding: 10px; font-size: 1rem; }
 .form .field { display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
 .form .field input { padding: 12px; border: 2px solid var(--line); border-radius: 12px; background: none; color: var(--fg); font: inherit; }
 .form .check { display: flex; gap: 8px; align-items: center; }

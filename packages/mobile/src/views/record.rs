@@ -3,7 +3,7 @@ use std::sync::Arc;
 use dioxus::prelude::*;
 use traced_core::{gps::GpsError, track::Track};
 
-use super::gps_status;
+use super::{gps_status, timed_m};
 use crate::{gps::wire::Permission, recorder::RecorderCtx, Route};
 
 #[component]
@@ -30,9 +30,12 @@ pub fn Tracks() -> Element {
                         class: if selected() == i { "selected" },
                         onclick: move |_| selected.set(i),
                         "{track.name}"
-                        small { "{track.length():.0} m · {track.sectors().count()} sectors" }
+                        small { "{timed_m(track):.0} m · {track.sectors().count()} sectors" }
                     }
                 }
+            }
+            if let Some(t) = tracks.read().get(selected()) {
+                Link { class: "button secondary", to: Route::EditTrack { id: t.uuid }, "Edit track" }
             }
             StartPanel { track: Some(selected()) }
         }
