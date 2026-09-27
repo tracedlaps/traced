@@ -56,13 +56,18 @@ h1 em { font-style: normal; color: var(--accent); }
 .track-map .you { fill: var(--accent); stroke: var(--bg); stroke-width: 2px; vector-effect: non-scaling-stroke; }
 .screen .session { border-top: 1px solid var(--line); padding-top: 8px; text-align: center; }
 .screen .session p { margin: 2px 0; }
-.screen .clock { font: 700 2.1rem/1.1 system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+/* Fixed width, so ticking digits don't shift the centred rows where the font lacks tabular figures. */
+.screen .clock { font: 700 2.1rem/1.1 system-ui, sans-serif; font-variant-numeric: tabular-nums; min-width: 6.2ch; text-align: left; }
 .screen .sector-clock { display: flex; justify-content: center; align-items: baseline; gap: 10px; font-weight: 600; }
 .screen .clock.small { font-size: 1.2rem; }
 .delta { font-weight: 700; font-variant-numeric: tabular-nums; }
 .delta.ahead { color: var(--ahead); }
 .delta.behind { color: var(--stop); }
-.screen .live-delta .delta { font-size: 1.5rem; }
+.screen .lap-clock { display: flex; justify-content: center; align-items: center; gap: 12px; }
+.screen .live-delta { text-align: left; line-height: 1.1; }
+.screen .live-delta small { display: block; color: var(--muted); font-size: 0.7rem; }
+/* Fixed width, so a delta's sign and length don't shift the centred clock. */
+.screen .live-delta .delta { display: block; min-width: 6ch; font-size: 1.2rem; }
 .screen .best { color: var(--muted); }
 .screen .note { color: var(--muted); text-align: center; margin: 0; font-size: 0.75rem; }
 .screen .stop { padding: 12px; border-radius: 12px; background: var(--stop); color: #fff; font-weight: 600; text-align: center; }

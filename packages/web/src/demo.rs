@@ -16,6 +16,8 @@ const GRIP: f64 = 8.0;
 const ACCEL: f64 = 3.0;
 const BRAKE: f64 = 6.0;
 const WINDOW: f64 = 10.0;
+/// Curve samples per waypoint gap.
+const SMOOTH: usize = 8;
 /// Lap seconds per real second, and the frame interval (ms).
 const SPEEDUP: f64 = 4.0;
 const TICK_MS: u32 = 33;
@@ -41,7 +43,27 @@ static CIRCUIT: LazyLock<Circuit> = LazyLock::new(|| {
         .collect();
     let (lat0, lon0) = ll[0];
     let r = 6_371_000f64.to_radians(); // metres per degree
-    let mut way: Vec<_> = ll.iter().map(|&(la, lo)| ((lo - lon0) * r * lat0.to_radians().cos(), (lat0 - la) * r)).collect();
+    let way: Vec<_> = ll.iter().map(|&(la, lo)| ((lo - lon0) * r * lat0.to_radians().cos(), (lat0 - la) * r)).collect();
+    // The app's Catmull-Rom curve (see mobile's `track_map::curves`), sampled SMOOTH times per waypoint.
+    let n = way.len();
+    let dist = |a: (f64, f64), b: (f64, f64)| (b.0 - a.0).hypot(b.1 - a.1);
+    let tangent = |i: usize| {
+        let (a, p, b) = (way[(i + n - 1) % n], way[i], way[(i + 1) % n]);
+        let d = (dist(a, p) + dist(p, b)).max(f64::EPSILON);
+        ((b.0 - a.0) / d, (b.1 - a.1) / d)
+    };
+    let mut way: Vec<_> = (0..n)
+        .flat_map(|i| {
+            let (p, q, m1, m2) = (way[i], way[(i + 1) % n], tangent(i), tangent((i + 1) % n));
+            let l = dist(p, q) / 3.0;
+            let (c1, c2) = ((p.0 + m1.0 * l, p.1 + m1.1 * l), (q.0 - m2.0 * l, q.1 - m2.1 * l));
+            (0..SMOOTH).map(move |k| {
+                let (t, u) = (k as f64 / SMOOTH as f64, 1.0 - k as f64 / SMOOTH as f64);
+                let b = |p: f64, c1: f64, c2: f64, q: f64| u * u * u * p + 3.0 * u * t * (u * c1 + t * c2) + t * t * t * q;
+                (b(p.0, c1.0, c2.0, q.0), b(p.1, c1.1, c2.1, q.1))
+            })
+        })
+        .collect();
     way.push(way[0]);
     let mut at = vec![0.0];
     for w in way.windows(2) {
@@ -77,7 +99,7 @@ static CIRCUIT: LazyLock<Circuit> = LazyLock::new(|| {
             v[i] = v[i].min((v[(i + 1) % m].powi(2) + 2.0 * BRAKE * ds).sqrt());
         }
     }
-    let idx = |wp: usize| (at[wp] / ds).round() as usize;
+    let idx = |wp: usize| (at[wp * SMOOTH] / ds).round() as usize;
     Circuit { sectors: [0, idx(SECTOR_WAYPOINTS[0]), idx(SECTOR_WAYPOINTS[1])], pts, v, ds, length }
 });
 
@@ -252,8 +274,10 @@ pub fn Phone() -> Element {
                 }
                 div { class: "session",
                     p { "Lap {s.lap}" }
-                    p { class: "clock", {lap_time(s.t)} }
-                    div { class: "live-delta", Delta { secs: s.cur[i] - s.best[i] } }
+                    div { class: "lap-clock",
+                        p { class: "clock", {lap_time(s.t)} }
+                        div { class: "live-delta", small { "Delta" } Delta { secs: s.cur[i] - s.best[i] } }
+                    }
                     div { class: "sector-clock", color: "var(--s{s.sector})",
                         span { "Sector {s.sector + 1}" }
                         span { class: "clock small", {lap_time(s.t - s.cur[c.sectors[s.sector]])} }
