@@ -1,15 +1,18 @@
+mod backup;
 mod history;
 mod import;
 mod live;
+mod record;
 mod results;
-mod setup;
+mod shell;
 mod track_map;
 
 pub use history::{History, SavedResults};
 pub use import::Import;
 pub use live::Live;
+pub use record::{Speedometer, Tracks};
 pub use results::Results;
-pub use setup::Setup;
+pub use shell::Shell;
 use traced_core::gps::GpsStatus;
 
 /// `m:ss.t`, the one format for every lap, split and clock.

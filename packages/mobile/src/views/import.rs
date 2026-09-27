@@ -3,7 +3,10 @@ use std::{collections::BTreeSet, sync::Arc};
 use dioxus::prelude::*;
 use traced_core::track::{import, Track, TrackBuilder, TrackShape, Waypoint};
 
-use super::track_map::{svg_point, Layout, SvgPoint, TrackSvg};
+use super::{
+    backup::Backup,
+    track_map::{svg_point, Layout, SvgPoint, TrackSvg},
+};
 use crate::{storage, Route};
 
 /// Turns another app's export into a track: pick the file, name it, say whether it loops,
@@ -63,6 +66,11 @@ pub fn Import() -> Element {
             Err(e) => error.set(Some(e)),
         }
     };
+    let mut discard = move || {
+        waypoints.write().clear();
+        name.write().clear();
+        error.set(None);
+    };
     let save = move |_| {
         let track = draft(&name.read());
         let Ok(built) = track.clone().build() else {
@@ -73,57 +81,63 @@ pub fn Import() -> Element {
             return;
         }
         tracks.write().push(Arc::new(built));
-        navigator().push(Route::Setup {});
+        discard();
+        navigator().push(Route::Tracks {});
     };
     let last = waypoints.read().len().saturating_sub(1);
 
     rsx! {
         main { class: "form",
             h1 { "Import track" }
-            button { class: "button secondary", onclick: pick, "Choose a CSV, GPX or KML file" }
-            if let Some(e) = error() {
-                p { class: "error", "{e}" }
-            }
-            if let Some(p) = preview() {
-                label { class: "field",
-                    "Name"
-                    input { r#type: "text", value: name, oninput: move |e| name.set(e.value()) }
+            div { class: "scroll",
+                button { class: "button secondary", onclick: pick, "Choose a CSV, GPX or KML file" }
+                if let Some(e) = error() {
+                    p { class: "error", "{e}" }
                 }
-                label { class: "check",
-                    input { r#type: "checkbox", checked: closed(), onchange: move |e| closed.set(e.checked()) }
-                    "Closed loop, timed in laps"
-                }
-                p { class: "note", "Tap waypoints to place sector gates." }
-                TrackSvg { layout: p.layout.clone(), current: None,
-                    for (i , (cx , cy)) in p.points.iter().copied().enumerate() {
-                        // The first waypoint (and an Open track's last) is already a gate.
-                        if i != 0 && (closed() || i != last) {
-                            circle {
-                                class: if sectors.read().contains(&i) { "waypoint gate" } else { "waypoint" },
-                                cx,
-                                cy,
-                                r: p.layout.dot_r,
-                                onclick: move |_| {
-                                    let mut s = sectors.write();
-                                    if !s.remove(&i) {
-                                        s.insert(i);
-                                    }
-                                },
+                if let Some(p) = preview() {
+                    label { class: "field",
+                        "Name"
+                        input { r#type: "text", value: name, oninput: move |e| name.set(e.value()) }
+                    }
+                    label { class: "check",
+                        input { r#type: "checkbox", checked: closed(), onchange: move |e| closed.set(e.checked()) }
+                        "Closed loop, timed in laps"
+                    }
+                    p { class: "note", "Tap waypoints to place sector gates." }
+                    TrackSvg { layout: p.layout.clone(), current: None,
+                        for (i , (cx , cy)) in p.points.iter().copied().enumerate() {
+                            // The first waypoint (and an Open track's last) is already a gate.
+                            if i != 0 && (closed() || i != last) {
+                                circle {
+                                    class: if sectors.read().contains(&i) { "waypoint gate" } else { "waypoint" },
+                                    cx,
+                                    cy,
+                                    r: p.layout.dot_r,
+                                    onclick: move |_| {
+                                        let mut s = sectors.write();
+                                        if !s.remove(&i) {
+                                            s.insert(i);
+                                        }
+                                    },
+                                }
                             }
                         }
                     }
+                    match &p.summary {
+                        Ok(summary) => rsx! { small { "{summary}" } },
+                        Err(e) => rsx! { p { class: "error", "{e}" } },
+                    }
                 }
-                match &p.summary {
-                    Ok(summary) => rsx! { small { "{summary}" } },
-                    Err(e) => rsx! { p { class: "error", "{e}" } },
-                }
+                Backup {}
+            }
+            if let Some(p) = preview() {
                 button {
                     disabled: p.summary.is_err() || name.read().trim().is_empty(),
                     onclick: save,
                     "Save track"
                 }
+                button { class: "button secondary", onclick: move |_| discard(), "Discard" }
             }
-            Link { class: "button secondary", to: Route::Setup {}, "Cancel" }
         }
     }
 }

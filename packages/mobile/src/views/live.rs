@@ -13,7 +13,7 @@ pub fn Live() -> Element {
         return rsx! {
             main {
                 p { "Not recording." }
-                Link { class: "button", to: Route::Setup {}, "New recording" }
+                Link { class: "button", to: Route::Tracks {}, "New recording" }
             }
         };
     }
@@ -22,7 +22,7 @@ pub fn Live() -> Element {
     let speed = ctx.speed.read().unwrap_or_default();
 
     rsx! {
-        main {
+        main { class: "live",
             div { class: "speed",
                 span { "{kmh(speed.current_speed_ms)}" }
                 small { "km/h" }

@@ -5,7 +5,7 @@ use traced_core::{
 };
 
 use super::{kmh, lap_time};
-use crate::{recorder::RecorderCtx, Route};
+use crate::recorder::RecorderCtx;
 
 #[component]
 pub fn Results() -> Element {
@@ -22,8 +22,9 @@ pub fn Results() -> Element {
     rsx! {
         main {
             h1 { "Results" }
-            Report { speed: summary.speedometer, session: summary.session.clone() }
-            Link { class: "button", to: Route::Setup {}, "New recording" }
+            div { class: "scroll",
+                Report { speed: summary.speedometer, session: summary.session.clone() }
+            }
         }
     }
 }

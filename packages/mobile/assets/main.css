@@ -7,8 +7,22 @@
   :root { --bg: #0c0a09; --fg: #fafaf9; --muted: #a8a29e; --line: #292524; }
 }
 * { box-sizing: border-box; }
+/* The app is exactly one screen tall; only .scroll areas scroll. */
+html, body, #main { height: 100%; overflow: hidden; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.4 system-ui, sans-serif; }
-main { display: flex; flex-direction: column; gap: 16px; padding: 24px 16px; max-width: 480px; margin: 0 auto; }
+main { display: flex; flex-direction: column; gap: 16px; padding: 24px 16px; width: 100%; max-width: 480px; margin: 0 auto; height: 100%; min-height: 0; }
+.scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+.scroll > * { flex-shrink: 0; }
+
+.shell { display: flex; flex-direction: column; height: 100%; }
+.shell > main { flex: 1; }
+.live-bar { display: block; padding: 10px; background: var(--stop); color: white; text-align: center; font-weight: 600; text-decoration: none; }
+.tabs { display: flex; border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+.tab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; color: var(--muted); font-size: 0.75rem; text-decoration: none; }
+.tab svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: all 0.2s; }
+.tab.active { color: var(--accent); }
+/* The current tab, raised out of the bar. */
+.tab.active svg { width: 56px; height: 56px; padding: 14px; margin-top: -32px; border-radius: 50%; background: var(--accent); color: white; stroke: white; box-shadow: 0 2px 8px #0003; }
 h1 { margin: 0; font-size: 1.5rem; }
 small { display: block; color: var(--muted); font-size: 0.85rem; }
 
@@ -28,6 +42,7 @@ button:disabled { opacity: 0.4; }
 
 .speed { text-align: center; }
 .speed span { font: 700 6rem/1 system-ui; font-variant-numeric: tabular-nums; }
+.speed.idle { justify-content: center; color: var(--muted); }
 .stats { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 0; }
 .stats dt { color: var(--muted); }
 .stats dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
@@ -50,6 +65,8 @@ button:disabled { opacity: 0.4; }
 .backup h2 { margin: 0; font-size: 1.1rem; }
 
 .track-map { width: 100%; max-height: 45vh; }
+/* Live gives the map whatever height is left. */
+.live .track-map { flex: 1; min-height: 0; max-height: none; }
 .track-map .outline { fill: none; stroke: var(--line); stroke-width: 6px; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .track-map .sector { fill: none; stroke-width: 6px; stroke-opacity: 0.35; stroke-linejoin: round; vector-effect: non-scaling-stroke; transition: stroke-opacity 0.3s; }
 .track-map .sector.current { stroke-opacity: 0.9; }

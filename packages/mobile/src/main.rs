@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use recorder::RecorderCtx;
 use uuid::Uuid;
-use views::{History, Import, Live, Results, SavedResults, Setup};
+use views::{History, Import, Live, Results, SavedResults, Shell, Speedometer, Tracks};
 
 #[cfg(target_os = "android")]
 mod android;
@@ -15,18 +15,23 @@ mod views;
 #[derive(Debug, Clone, Routable, PartialEq)]
 #[rustfmt::skip]
 enum Route {
-    #[route("/")]
-    Setup {},
+    #[layout(Shell)]
+        #[route("/history")]
+        History {},
+        #[route("/history/:id")]
+        SavedResults { id: Uuid },
+        #[route("/")]
+        Tracks {},
+        #[route("/speedometer")]
+        Speedometer {},
+        #[route("/editor")]
+        Import {},
+        #[route("/results")]
+        Results {},
+    #[end_layout]
+    // Full screen, so nothing is mistapped mid-drive.
     #[route("/live")]
     Live {},
-    #[route("/results")]
-    Results {},
-    #[route("/import")]
-    Import {},
-    #[route("/history")]
-    History {},
-    #[route("/history/:id")]
-    SavedResults { id: Uuid },
 }
 
 const MAIN_CSS: Asset = asset!("/assets/main.css");
