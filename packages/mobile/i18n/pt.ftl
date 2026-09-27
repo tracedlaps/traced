@@ -62,6 +62,7 @@ finished = Terminado
 last-sector = Último setor { $time }
 last-lap = Última volta { $time }
 best = Melhor { $time }
+delta = Delta
 gps-ended = O sinal GPS terminou. Pare para ver os resultados.
 
 ## Results and history

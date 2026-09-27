@@ -62,6 +62,7 @@ finished = Finished
 last-sector = Last sector { $time }
 last-lap = Last lap { $time }
 best = Best { $time }
+delta = Delta
 gps-ended = GPS stream ended. Stop to see the results.
 
 ## Results and history

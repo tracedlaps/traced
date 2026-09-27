@@ -50,7 +50,8 @@ small.interrupted { color: var(--accent); }
 
 .session { border-top: 1px solid var(--line); padding-top: 16px; text-align: center; }
 .session p { margin: 4px 0; }
-.clock { font: 700 3rem system-ui; font-variant-numeric: tabular-nums; }
+/* Fixed width, so ticking digits don't shift the centred rows where the font lacks tabular figures. */
+.clock { font: 700 3rem system-ui; font-variant-numeric: tabular-nums; min-width: 6.2ch; text-align: left; }
 .clock.small { font-size: 1.75rem; }
 .sector-clock { display: flex; justify-content: center; align-items: baseline; gap: 12px; font-weight: 600; }
 
@@ -61,7 +62,10 @@ small.interrupted { color: var(--accent); }
 .delta { font-weight: 700; font-variant-numeric: tabular-nums; }
 .delta.ahead { color: var(--ahead); }
 .delta.behind { color: var(--stop); }
-.live-delta .delta { font-size: 2.25rem; }
+.lap-clock { display: flex; justify-content: center; align-items: center; gap: 16px; }
+.live-delta { text-align: left; line-height: 1.1; }
+/* Fixed width, so a delta's sign and length don't shift the centred clock. */
+.live-delta .delta { display: block; min-width: 6ch; font-size: 1.75rem; }
 .pb { color: var(--accent); font-weight: 700; }
 .best { color: var(--muted); }
 .gps p { margin: 0; }

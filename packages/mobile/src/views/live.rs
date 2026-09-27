@@ -40,9 +40,15 @@ pub fn Live() -> Element {
                         LiveStatus::Armed => rsx! { p { {t!("waiting-for-start")} } },
                         LiveStatus::InProgress { lap_anchor, sector_anchor, sector } => rsx! {
                             p { {t!("lap-n", n: live.laps + 1)} }
-                            LiveClock { anchor: lap_anchor, class: "clock" }
-                            if let Some(delta) = live.delta {
-                                div { class: "live-delta", Delta { delta } }
+                            // Delta sits beside the clock so it never steals height from the map.
+                            div { class: "lap-clock",
+                                LiveClock { anchor: lap_anchor, class: "clock" }
+                                if let Some(delta) = live.delta {
+                                    div { class: "live-delta",
+                                        small { {t!("delta")} }
+                                        Delta { delta }
+                                    }
+                                }
                             }
                             // Same color as the sector on the map.
                             div { class: "sector-clock", style: "color: var(--sector-{sector % 4})",
