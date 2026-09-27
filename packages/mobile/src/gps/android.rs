@@ -32,49 +32,11 @@ extern "Kotlin" {
     pub fn open_app_settings(this: &GpsPlugin) -> String;
 }
 
-/// The macro's `GpsPlugin::new()` uses JNI `FindClass`, which only sees the bootstrap classloader
-/// on Rust-spawned (e.g. tokio) threads. Loading through the activity's own classloader works from
-/// any thread.
 pub fn construct_plugin() -> Result<GpsPlugin, GpsError> {
-    use manganis::jni::objects::{JClass, JValue};
     const CLASS: &str = "dev.traced.gps.GpsPlugin";
-
-    manganis::android::with_activity(|env, activity| {
-        let plugin = (|| {
-            let loader = env
-                .call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])
-                .ok()?
-                .l()
-                .ok()?;
-            let name = env.new_string(CLASS).ok()?;
-            let class: JClass = env
-                .call_method(
-                    &loader,
-                    "loadClass",
-                    "(Ljava/lang/String;)Ljava/lang/Class;",
-                    &[JValue::Object(&name)],
-                )
-                .ok()?
-                .l()
-                .ok()?
-                .into();
-            let instance = env
-                .new_object(
-                    &class,
-                    "(Landroid/app/Activity;)V",
-                    &[JValue::Object(activity)],
-                )
-                .ok()?;
-            Some(GpsPlugin::from_global_ref(
-                env.new_global_ref(&instance).ok()?,
-            ))
-        })();
-        if plugin.is_none() {
-            let _ = env.exception_clear(); // a pending Java exception would abort the next JNI call
-        }
-        plugin
-    })
-    .ok_or_else(|| GpsError::Unavailable(format!("failed to construct {CLASS}")))
+    crate::android::load_plugin(CLASS)
+        .map(GpsPlugin::from_global_ref)
+        .ok_or_else(|| GpsError::Unavailable(format!("failed to construct {CLASS}")))
 }
 
 /// The phone's GPS through the Kotlin plugin: Fused, or `LocationManager` as fallback.

@@ -1,18 +1,16 @@
+use std::sync::Arc;
+
 use dioxus::prelude::*;
-use traced_core::gps::GpsError;
+use traced_core::{gps::GpsError, track::Track};
 
 use super::gps_status;
-use crate::{
-    gps::wire::Permission,
-    recorder::RecorderCtx,
-    tracks::{Preset, TRACKS},
-    Route,
-};
+use crate::{gps::wire::Permission, recorder::RecorderCtx, Route};
 
 #[component]
 pub fn Setup() -> Element {
     let ctx = use_context::<RecorderCtx>();
-    // Index into TRACKS; None records the speedometer only.
+    let tracks = use_context::<Signal<Vec<Arc<Track>>>>();
+    // Index into tracks; None records the speedometer only.
     let mut selected = use_signal(|| Some(0));
     // Why the last Start didn't record.
     let mut refused = use_signal(|| None::<String>);
@@ -37,7 +35,7 @@ pub fn Setup() -> Element {
                     "No track"
                     small { "Speedometer only" }
                 }
-                for (i, Preset { track, .. }) in TRACKS.iter().enumerate() {
+                for (i, track) in tracks.read().iter().enumerate() {
                     li {
                         class: if selected() == Some(i) { "selected" },
                         onclick: move |_| selected.set(Some(i)),
@@ -76,7 +74,7 @@ pub fn Setup() -> Element {
             }
             button {
                 onclick: move |_| async move {
-                    match ctx.start(selected().map(|i| &TRACKS[i])).await {
+                    match ctx.start(selected().and_then(|i| tracks.read().get(i).cloned())).await {
                         Ok(()) => {
                             refused.set(None);
                             navigator().push(Route::Live {});

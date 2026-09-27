@@ -229,7 +229,14 @@ fn svg_point(track: &Track, w: Waypoint) -> SvgPoint {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tracks::TRACKS;
+    use crate::tracks::PRESETS;
+
+    fn tracks() -> Vec<Track> {
+        PRESETS
+            .iter()
+            .map(|p| p.track.clone().build().unwrap())
+            .collect()
+    }
 
     #[test]
     fn curves_pass_through_every_point() {
@@ -250,7 +257,7 @@ mod tests {
 
     #[test]
     fn sectors_start_on_their_gates() {
-        for track in TRACKS.iter().map(|p| &p.track) {
+        for track in &tracks() {
             let l = Layout::new(track);
             assert_eq!(l.sectors.len(), track.sectors().count(), "{}", track.name);
             for (sector, gate) in l.sectors.iter().zip(track.gates_ordered()) {
@@ -268,7 +275,7 @@ mod tests {
     #[test]
     #[ignore]
     fn render_track_maps() {
-        for (i, track) in TRACKS.iter().map(|p| &p.track).enumerate() {
+        for (i, track) in tracks().iter().enumerate() {
             let l = Layout::new(track);
             let colors = ["#2563eb", "#16a34a", "#9333ea", "#0891b2"];
             let stroke = |d: &str, color: &str, opacity: f64| {

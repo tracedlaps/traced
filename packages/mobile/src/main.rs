@@ -3,8 +3,11 @@ use dioxus::prelude::*;
 use recorder::RecorderCtx;
 use views::{Live, Results, Setup};
 
+#[cfg(target_os = "android")]
+mod android;
 mod gps;
 mod recorder;
+mod storage;
 mod tracks;
 mod views;
 
@@ -29,6 +32,8 @@ fn main() {
 fn App() -> Element {
     // Root-owned, so a recording survives moving between screens.
     use_context_provider(RecorderCtx::new);
+    let tracks = use_signal(storage::load_tracks);
+    use_context_provider(|| tracks);
 
     rsx! {
         document::Stylesheet { href: MAIN_CSS }

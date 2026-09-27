@@ -4,6 +4,7 @@ pub use correlator::{Correlator, LiveSessionSnapshot, LiveStatus};
 pub use session::{Completed, Lap, Run, Session};
 
 use geo::{Coord, Densify, Euclidean, InterpolateLine, Length, Line, Point, coord};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub type Waypoint = geo::Point<f64>;
@@ -28,6 +29,7 @@ impl Track {
     /// to get a `Track`.
     pub fn builder(name: impl Into<String>, shape: TrackShape) -> TrackBuilder {
         TrackBuilder {
+            uuid: Uuid::new_v4(),
             name: name.into(),
             shape,
             waypoints: Vec::new(),
@@ -80,7 +82,7 @@ pub struct Sector<'a> {
 }
 
 /// Where the gates are placed, per track kind.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum TrackShape {
     Open { start: Waypoint, finish: Waypoint },
     Closed { gate: Waypoint },
@@ -94,8 +96,10 @@ pub enum Boundary {
     Closed { gate: Gate },
 }
 
-#[derive(Debug)]
+/// A track's authored inputs; also its persisted form, since everything a `Track` adds is derived.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrackBuilder {
+    uuid: Uuid,
     name: String,
     shape: TrackShape,
     waypoints: Vec<Waypoint>,
@@ -103,6 +107,16 @@ pub struct TrackBuilder {
 }
 
 impl TrackBuilder {
+    pub fn uuid(&self) -> Uuid {
+        self.uuid
+    }
+
+    /// Keeps a track's identity across rebuilds; `Track::builder` picks a random one.
+    pub fn with_uuid(mut self, uuid: Uuid) -> Self {
+        self.uuid = uuid;
+        self
+    }
+
     pub fn waypoints(mut self, waypoints: impl IntoIterator<Item = Waypoint>) -> Self {
         self.waypoints = waypoints.into_iter().collect();
         self
@@ -172,7 +186,7 @@ impl TrackBuilder {
         sector_gates.sort_by(|a, b| from_start(a).total_cmp(&from_start(b)));
 
         Ok(Track {
-            uuid: Uuid::new_v4(),
+            uuid: self.uuid,
             name: self.name,
             boundary,
             waypoints: self.waypoints,

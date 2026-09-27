@@ -15,7 +15,7 @@ use traced_core::{
 
 use crate::{
     gps::wire::Permission,
-    tracks::{Preset, TRACKS},
+    tracks::{mock_speed_kmh, PRESETS},
 };
 #[cfg(target_os = "android")]
 use {crate::gps::android::AndroidGpsProvider, dioxus::logger::tracing::warn};
@@ -87,13 +87,12 @@ impl RecorderCtx {
         ctx
     }
 
-    /// Records against `preset`'s track, or with no track (speedometer only). On the device GPS,
+    /// Records against `track`, or with none (speedometer only). On the device GPS,
     /// first asks for the location permission if needed; fails if denied or location is off.
-    pub async fn start(mut self, preset: Option<&'static Preset>) -> Result<(), GpsError> {
-        let track = preset.map(|p| p.track.clone());
+    pub async fn start(mut self, track: Option<Arc<Track>>) -> Result<(), GpsError> {
         let fixes = match self.device_fixes().await? {
             Some(fixes) => fixes,
-            None => self.mock_fixes(preset),
+            None => self.mock_fixes(track.clone()),
         };
         let recording = Recorder::start(fixes, track.clone());
         bridge(recording.fix.clone(), self.fix, identity);
@@ -118,12 +117,13 @@ impl RecorderCtx {
 }
 
 impl RecorderCtx {
-    /// Drives the chosen track (or the first one) on the mock GPS.
-    fn mock_fixes(self, preset: Option<&'static Preset>) -> Fixes {
-        let driven = preset.unwrap_or(&TRACKS[0]);
+    /// Drives the chosen track (or the first preset) on the mock GPS.
+    fn mock_fixes(self, track: Option<Arc<Track>>) -> Fixes {
+        let driven = track
+            .unwrap_or_else(|| Arc::new(PRESETS[0].track.clone().build().expect("valid preset")));
         let mut gps = MockGPSProvider::drive(
-            &driven.track,
-            driven.mock_speed_kmh / 3.6,
+            &driven,
+            mock_speed_kmh(&driven) / 3.6,
             MockGPSConfig {
                 jitter_m: 2.0,
                 ..Default::default()
