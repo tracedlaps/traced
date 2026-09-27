@@ -177,8 +177,8 @@ impl RecorderCtx {
             &driven,
             mock_speed_kmh(&driven) / 3.6,
             MockGPSConfig {
-                jitter_m: 2.0,
-                pace_jitter: 0.15,
+                jitter_m: 0.5,
+                pace_jitter: 0.03,
                 ..Default::default()
             },
         );
