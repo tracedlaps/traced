@@ -46,6 +46,8 @@ button:disabled { opacity: 0.4; }
 .gps .error { color: var(--stop); }
 .gps label { display: flex; gap: 8px; align-items: center; padding: 8px 0; }
 .note { color: var(--muted); text-align: center; margin: 0; }
+.backup { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 16px; }
+.backup h2 { margin: 0; font-size: 1.1rem; }
 
 .track-map { width: 100%; max-height: 45vh; }
 .track-map .outline { fill: none; stroke: var(--line); stroke-width: 6px; stroke-linejoin: round; vector-effect: non-scaling-stroke; }

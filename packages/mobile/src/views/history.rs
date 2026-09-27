@@ -13,8 +13,30 @@ use crate::{storage, Route};
 
 #[component]
 pub fn History() -> Element {
-    let tracks = use_context::<Signal<Vec<Arc<Track>>>>();
+    let mut tracks = use_context::<Signal<Vec<Arc<Track>>>>();
+    // Last backup action's outcome; also re-renders the list after a restore.
+    let mut status = use_signal(|| None::<Result<&str, String>>);
+    let mut confirm_restore = use_signal(|| false);
     let recordings = storage::recordings();
+
+    let export = move |_| async move {
+        match storage::export_backup().await {
+            Ok(true) => status.set(Some(Ok("Backup saved."))),
+            Ok(false) => {}
+            Err(e) => status.set(Some(Err(e))),
+        }
+    };
+    let restore = move |_| async move {
+        confirm_restore.set(false);
+        match storage::restore_backup().await {
+            Ok(true) => {
+                tracks.set(storage::load_tracks());
+                status.set(Some(Ok("Backup restored.")));
+            }
+            Ok(false) => {}
+            Err(e) => status.set(Some(Err(e))),
+        }
+    };
 
     rsx! {
         main {
@@ -34,6 +56,23 @@ pub fn History() -> Element {
                 }
             }
             Link { class: "button", to: Route::Setup {}, "New recording" }
+            section { class: "backup",
+                h2 { "Backup" }
+                p { class: "note", "Everything lives only on this phone. Export it to keep a copy." }
+                button { class: "button secondary", onclick: export, "Export backup" }
+                if confirm_restore() {
+                    p { class: "error", "Restoring replaces every track and recording here with the backup's." }
+                    button { class: "stop", onclick: restore, "Choose backup and replace" }
+                    button { class: "button secondary", onclick: move |_| confirm_restore.set(false), "Cancel" }
+                } else {
+                    button { class: "button secondary", onclick: move |_| confirm_restore.set(true), "Restore backup" }
+                }
+                match status() {
+                    Some(Ok(done)) => rsx! { p { class: "note", "{done}" } },
+                    Some(Err(e)) => rsx! { p { class: "error", "{e}" } },
+                    None => rsx! {},
+                }
+            }
         }
     }
 }

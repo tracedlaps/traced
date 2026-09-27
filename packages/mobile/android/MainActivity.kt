@@ -10,7 +10,7 @@ typealias BuildConfig = dev.traced.app.BuildConfig
 
 // Replaces dx's generated MainActivity (Dioxus.toml `application.android_main_activity`).
 // `registerForActivityResult` must run before the activity starts, so the location-permission
-// and file-picker launchers live here and are handed to the plugins' companions. Raw onRequestPermissionsResult
+// and file launchers live here and are handed to the plugins' companions. Raw onRequestPermissionsResult
 // did not fire reliably under WryActivity.
 class MainActivity : WryActivity() {
     private val locationPermissionLauncher =
@@ -18,9 +18,9 @@ class MainActivity : WryActivity() {
             GpsPlugin.onPermissionResult(granted)
         }
     private val filePicker =
-        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            StoragePlugin.onFilePicked(uri)
-        }
+        registerForActivityResult(ActivityResultContracts.OpenDocument(), StoragePlugin::onFileChosen)
+    private val fileSaver =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.sqlite3"), StoragePlugin::onFileChosen)
 
     init {
         GpsPlugin.requestLocationPermission = {
@@ -28,5 +28,6 @@ class MainActivity : WryActivity() {
         }
         // CSV, GPX and KML have no reliable MIME types, so any file; the parser tells them apart.
         StoragePlugin.launchFilePicker = { filePicker.launch(arrayOf("*/*")) }
+        StoragePlugin.launchFileSaver = { name -> fileSaver.launch(name) }
     }
 }

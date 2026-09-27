@@ -43,7 +43,10 @@ pub fn Import() -> Element {
     let pick = move |_| async move {
         match storage::pick_file().await {
             Ok(None) => {}
-            Ok(Some(file)) => match import::waypoints(&file.text) {
+            Ok(Some(file)) => match std::fs::read_to_string(&file.path)
+                .map_err(|e| e.to_string())
+                .and_then(|text| import::waypoints(&text).map_err(|e| e.to_string()))
+            {
                 Ok(w) => {
                     let stem = file
                         .name

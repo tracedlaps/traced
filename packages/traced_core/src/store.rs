@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OpenFlags, backup::Progress, params};
 use tracing::warn;
 use uuid::Uuid;
 
@@ -13,6 +13,18 @@ use crate::{
     speedometer::SpeedometerSnapshot,
     track::{Session, Track, TrackBuildError, TrackBuilder},
 };
+
+/// Runs the migrations `db` hasn't had yet, all in one transaction.
+fn migrate(db: &mut Connection) -> Result<(), StoreError> {
+    let current: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    let tx = db.transaction()?;
+    for (sql, version) in MIGRATIONS.iter().zip(1..).skip(current as usize) {
+        tx.execute_batch(sql)?;
+        tx.pragma_update(None, "user_version", version)?;
+    }
+    tx.commit()?;
+    Ok(())
+}
 
 /// Schema upgrades, one per version (SQLite's `user_version`). Append only: never edit a shipped one.
 const MIGRATIONS: &[&str] = &[
@@ -65,6 +77,12 @@ pub enum StoreError {
     Track(#[from] TrackBuildError),
     #[error(transparent)]
     Uuid(#[from] uuid::Error),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error("not a Traced backup")]
+    NotABackup,
+    #[error("this backup is from a newer version of Traced")]
+    BackupTooNew,
 }
 
 impl Store {
@@ -72,14 +90,35 @@ impl Store {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
         let mut db = Connection::open(path)?;
         db.pragma_update(None, "foreign_keys", true)?;
-        let current: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0))?;
-        let tx = db.transaction()?;
-        for (sql, version) in MIGRATIONS.iter().zip(1..).skip(current as usize) {
-            tx.execute_batch(sql)?;
-            tx.pragma_update(None, "user_version", version)?;
-        }
-        tx.commit()?;
+        migrate(&mut db)?;
         Ok(Self { db })
+    }
+
+    /// Writes a compact, consistent copy of everything to `path`, replacing any file there.
+    pub fn export(&self, path: impl AsRef<Path>) -> Result<(), StoreError> {
+        let path = path.as_ref();
+        if path.exists() {
+            std::fs::remove_file(path)?;
+        }
+        self.db
+            .execute("VACUUM INTO ?1", [path.to_string_lossy()])?;
+        Ok(())
+    }
+
+    /// Replaces everything with the backup at `path` (from `export`), upgrading an older one.
+    /// Leaves the store untouched if `path` isn't a backup this version can read.
+    pub fn restore(&mut self, path: impl AsRef<Path>) -> Result<(), StoreError> {
+        let backup = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        let version: i64 = backup
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .map_err(|_| StoreError::NotABackup)?;
+        match version {
+            0 => return Err(StoreError::NotABackup),
+            v if v > MIGRATIONS.len() as i64 => return Err(StoreError::BackupTooNew),
+            _ => drop(backup),
+        }
+        self.db.restore("main", path, None::<fn(Progress)>)?;
+        migrate(&mut self.db)
     }
 
     /// Inserts or updates the track with `track`'s uuid. Refuses one that doesn't build.
@@ -355,5 +394,79 @@ mod tests {
         store.delete_track(spec.uuid()).unwrap();
         assert_eq!(store.recordings().unwrap().len(), 1);
         assert!(store.fixes(timed).unwrap().is_empty());
+    }
+
+    #[test]
+    fn restore_replaces_everything_with_an_export() {
+        let dir = tempfile::tempdir().unwrap();
+        let backup = dir.path().join("backup.db");
+        let mut source = Store::open(":memory:").unwrap();
+        let spec = sprint("Sprint");
+        source.put_track(&spec).unwrap();
+        let id = source
+            .put_recording(&summary(Some(&spec.clone().build().unwrap()), 100))
+            .unwrap();
+        source.export(&backup).unwrap();
+        source.export(&backup).unwrap(); // over an existing file
+
+        let mut store = Store::open(":memory:").unwrap();
+        store.put_track(&sprint("Replaced")).unwrap();
+        store.restore(&backup).unwrap();
+        let names: Vec<_> = store
+            .tracks()
+            .unwrap()
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        assert_eq!(names, ["Sprint"]);
+        assert_eq!(store.recordings().unwrap(), source.recordings().unwrap());
+        assert_eq!(store.fixes(id).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn restore_upgrades_an_older_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let backup = dir.path().join("v1.db");
+        let old = Connection::open(&backup).unwrap();
+        old.execute_batch(MIGRATIONS[0]).unwrap();
+        old.pragma_update(None, "user_version", 1).unwrap();
+        let spec = serde_json::to_string(&sprint("Old")).unwrap();
+        old.execute("INSERT INTO tracks VALUES ('a', ?1)", [spec])
+            .unwrap();
+        drop(old);
+
+        let mut store = Store::open(":memory:").unwrap();
+        store.restore(&backup).unwrap();
+        assert_eq!(store.tracks().unwrap()[0].name, "Old");
+        assert!(store.recordings().unwrap().is_empty()); // v2's tables exist
+    }
+
+    #[test]
+    fn restore_refuses_other_files_and_keeps_the_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let (text, empty, newer) = (
+            dir.path().join("t.csv"),
+            dir.path().join("e.db"),
+            dir.path().join("n.db"),
+        );
+        std::fs::write(&text, "lat,lon\n1,2\n").unwrap();
+        Connection::open(&empty)
+            .unwrap()
+            .execute_batch("CREATE TABLE x (y)")
+            .unwrap();
+        Connection::open(&newer)
+            .unwrap()
+            .pragma_update(None, "user_version", 99)
+            .unwrap();
+
+        let mut store = Store::open(":memory:").unwrap();
+        store.put_track(&sprint("Kept")).unwrap();
+        assert!(matches!(store.restore(&text), Err(StoreError::NotABackup)));
+        assert!(matches!(store.restore(&empty), Err(StoreError::NotABackup)));
+        assert!(matches!(
+            store.restore(&newer),
+            Err(StoreError::BackupTooNew)
+        ));
+        assert_eq!(store.tracks().unwrap()[0].name, "Kept");
     }
 }

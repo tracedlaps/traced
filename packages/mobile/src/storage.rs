@@ -25,11 +25,37 @@ mod plugin {
         pub fn data_dir(this: &StoragePlugin) -> String;
         /// Blocks until the user picks or cancels: call from `spawn_blocking`.
         pub fn pick_file(this: &StoragePlugin) -> String;
+        /// Blocks until the user saves or cancels: call from `spawn_blocking`.
+        pub fn save_file(this: &StoragePlugin, path: &str, name: &str) -> String;
     }
 
     pub fn construct() -> Option<StoragePlugin> {
         crate::android::load_plugin("dev.traced.storage.StoragePlugin")
             .map(StoragePlugin::from_global_ref)
+    }
+
+    /// Runs a blocking plugin call off the UI thread and unwraps its reply envelope.
+    pub async fn call<T: serde::de::DeserializeOwned + Send + 'static>(
+        f: impl FnOnce(&StoragePlugin) -> Result<String, String> + Send + 'static,
+    ) -> Result<T, String> {
+        #[derive(serde::Deserialize)]
+        struct Reply {
+            ok: bool,
+            #[serde(default)]
+            data: serde_json::Value,
+            #[serde(default)]
+            detail: String,
+        }
+        tokio::task::spawn_blocking(move || {
+            let plugin = construct().ok_or("the storage plugin failed to load")?;
+            let reply: Reply = serde_json::from_str(&f(&plugin)?).map_err(|e| e.to_string())?;
+            if !reply.ok {
+                return Err(reply.detail);
+            }
+            T::deserialize(reply.data).map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())?
     }
 }
 
@@ -99,41 +125,68 @@ pub fn recordings() -> Vec<SavedRecording> {
     with_store("load recordings", |s| s.recordings()).unwrap_or_default()
 }
 
-/// A file the user picked, read whole.
+/// A file the user picked; on Android a copy in the app's cache.
 #[derive(Deserialize)]
 pub struct PickedFile {
     pub name: String,
-    pub text: String,
+    pub path: PathBuf,
 }
 
 /// Asks the user for a file through the system picker; `Ok(None)` if they cancel.
 pub async fn pick_file() -> Result<Option<PickedFile>, String> {
     #[cfg(target_os = "android")]
-    return tokio::task::spawn_blocking(|| {
-        #[derive(Deserialize)]
-        struct Reply {
-            ok: bool,
-            data: Option<PickedFile>,
-            #[serde(default)]
-            detail: String,
-        }
-        let plugin = plugin::construct().ok_or("the storage plugin failed to load")?;
-        let reply: Reply =
-            serde_json::from_str(&plugin::pick_file(&plugin)?).map_err(|e| e.to_string())?;
-        reply.ok.then_some(reply.data).ok_or(reply.detail)
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+    return plugin::call(plugin::pick_file).await;
 
     #[cfg(not(target_os = "android"))]
-    {
-        let Some(file) = rfd::AsyncFileDialog::new().pick_file().await else {
-            return Ok(None);
-        };
-        let text = String::from_utf8(file.read().await).map_err(|e| e.to_string())?;
-        Ok(Some(PickedFile {
-            name: file.file_name(),
-            text,
+    Ok(rfd::AsyncFileDialog::new()
+        .pick_file()
+        .await
+        .map(|f| PickedFile {
+            name: f.file_name(),
+            path: f.path().into(),
         }))
+}
+
+/// Exports everything to a file the user chooses; `Ok(false)` if they cancel.
+pub async fn export_backup() -> Result<bool, String> {
+    let name = format!("traced-{}.db", chrono::Local::now().format("%Y-%m-%d"));
+    let store = |path: PathBuf| {
+        with_store("export", |s| s.export(&path)).ok_or("Couldn't export the data.".to_string())
+    };
+
+    #[cfg(target_os = "android")]
+    {
+        let path = data_dir().ok_or("no data dir")?.join("export.db");
+        store(path.clone())?;
+        let arg = path.to_string_lossy().into_owned();
+        let saved = plugin::call(move |p| plugin::save_file(p, &arg, &name)).await;
+        let _ = fs::remove_file(&path);
+        saved
     }
+
+    #[cfg(not(target_os = "android"))]
+    match rfd::AsyncFileDialog::new()
+        .set_file_name(&name)
+        .save_file()
+        .await
+    {
+        Some(file) => store(file.path().into()).map(|()| true),
+        None => Ok(false),
+    }
+}
+
+/// Replaces everything with a backup the user picks; `Ok(false)` if they cancel.
+pub async fn restore_backup() -> Result<bool, String> {
+    let Some(file) = pick_file().await? else {
+        return Ok(false);
+    };
+    let mut store = STORE
+        .as_ref()
+        .ok_or("no store to restore into")?
+        .lock()
+        .unwrap();
+    store
+        .restore(&file.path)
+        .map_err(|e| format!("{}: {e}", file.name))?;
+    Ok(true)
 }
