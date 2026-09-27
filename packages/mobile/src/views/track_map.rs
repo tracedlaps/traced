@@ -25,6 +25,24 @@ pub fn TrackMap() -> Element {
     };
 
     rsx! {
+        TrackSvg { layout: layout.clone(), current,
+            if let Some((x, y)) = dot {
+                // Positioned by transform, so CSS can glide it from one fix to the next.
+                circle {
+                    class: "you",
+                    r: layout.dot_r,
+                    style: "transform: translate({x}px, {y}px)",
+                }
+            }
+        }
+    }
+}
+
+/// A track's outline, sectors (`current` highlighted) and gates; `children` draw on top,
+/// in the same coordinates (see `svg_point`).
+#[component]
+pub fn TrackSvg(layout: Layout, current: Option<usize>, children: Element) -> Element {
+    rsx! {
         svg { class: "track-map", view_box: "{layout.view_box}",
             path { class: "outline", d: "{layout.outline}" }
             for (k , d) in layout.sectors.into_iter().enumerate() {
@@ -43,31 +61,24 @@ pub fn TrackMap() -> Element {
                     y2,
                 }
             }
-            if let Some((x, y)) = dot {
-                // Positioned by transform, so CSS can glide it from one fix to the next.
-                circle {
-                    class: "you",
-                    r: layout.dot_r,
-                    style: "transform: translate({x}px, {y}px)",
-                }
-            }
+            {children}
         }
     }
 }
 
 #[derive(Clone, PartialEq)]
-struct Layout {
+pub struct Layout {
     view_box: String,
     outline: String,
     /// One path per sector, in travel order.
     sectors: Vec<String>,
     /// Gate ends, and whether it's a start/finish gate (vs a sector gate).
     gates: Vec<(SvgPoint, SvgPoint, bool)>,
-    dot_r: f64,
+    pub dot_r: f64,
 }
 
 impl Layout {
-    fn new(track: &Track) -> Self {
+    pub fn new(track: &Track) -> Self {
         let closed = matches!(track.boundary, Boundary::Closed { .. });
         // Travel order; a Closed track's start gate is also its finish, so it's listed once.
         let mut ordered: Vec<_> = track.gates_ordered().collect();
@@ -136,7 +147,7 @@ impl Layout {
     }
 }
 
-type SvgPoint = (f64, f64);
+pub type SvgPoint = (f64, f64);
 
 fn dist(a: SvgPoint, b: SvgPoint) -> f64 {
     (b.0 - a.0).hypot(b.1 - a.1)
@@ -221,7 +232,7 @@ fn curves(points: &[SvgPoint], closed: bool) -> Vec<String> {
         .collect()
 }
 
-fn svg_point(track: &Track, w: Waypoint) -> SvgPoint {
+pub fn svg_point(track: &Track, w: Waypoint) -> SvgPoint {
     let p = track.projection.project(w);
     (p.x(), 0.0 - p.y()) // not -p.y(): no "-0.0" in paths
 }

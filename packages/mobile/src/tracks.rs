@@ -1,6 +1,6 @@
 use std::sync::LazyLock;
 
-use traced_core::track::{Track, TrackBuilder, TrackShape, Waypoint};
+use traced_core::track::{import, Track, TrackBuilder, TrackShape, Waypoint};
 use uuid::Uuid;
 
 /// A built-in track, seeded into an empty store. Fixed uuids keep `mock_speed_kmh` findable.
@@ -80,16 +80,9 @@ pub fn mock_speed_kmh(track: &Track) -> f64 {
         .map_or(50.0, |p| p.mock_speed_kmh)
 }
 
-/// Waypoints from a CSV export with a header and `lat,lon` as its first columns.
+/// A bundled CSV export's waypoints.
 fn waypoints(csv: &str) -> Vec<Waypoint> {
-    csv.lines()
-        .skip(1)
-        .map(|line| {
-            let mut cols = line.split(',').map(|c| c.parse().expect("numeric lat,lon"));
-            let (lat, lon) = (cols.next().unwrap(), cols.next().unwrap());
-            Waypoint::new(lon, lat)
-        })
-        .collect()
+    import::waypoints(csv).expect("valid bundled track")
 }
 
 #[cfg(test)]

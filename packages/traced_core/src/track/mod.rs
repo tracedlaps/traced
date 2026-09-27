@@ -1,4 +1,5 @@
 mod correlator;
+pub mod import;
 mod session;
 pub use correlator::{Correlator, LiveSessionSnapshot, LiveStatus};
 pub use session::{Completed, Lap, Run, Session};

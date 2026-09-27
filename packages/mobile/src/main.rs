@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use recorder::RecorderCtx;
 use uuid::Uuid;
-use views::{History, Live, Results, SavedResults, Setup};
+use views::{History, Import, Live, Results, SavedResults, Setup};
 
 #[cfg(target_os = "android")]
 mod android;
@@ -21,6 +21,8 @@ enum Route {
     Live {},
     #[route("/results")]
     Results {},
+    #[route("/import")]
+    Import {},
     #[route("/history")]
     History {},
     #[route("/history/:id")]

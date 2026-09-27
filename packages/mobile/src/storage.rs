@@ -8,10 +8,11 @@ use std::{
 };
 
 use dioxus::logger::tracing::warn;
+use serde::Deserialize;
 use traced_core::{
     recorder::RecordingSummary,
     store::{SavedRecording, Store, StoreError},
-    track::Track,
+    track::{Track, TrackBuilder},
 };
 
 use crate::tracks::PRESETS;
@@ -22,6 +23,13 @@ mod plugin {
     extern "Kotlin" {
         pub type StoragePlugin;
         pub fn data_dir(this: &StoragePlugin) -> String;
+        /// Blocks until the user picks or cancels: call from `spawn_blocking`.
+        pub fn pick_file(this: &StoragePlugin) -> String;
+    }
+
+    pub fn construct() -> Option<StoragePlugin> {
+        crate::android::load_plugin("dev.traced.storage.StoragePlugin")
+            .map(StoragePlugin::from_global_ref)
     }
 }
 
@@ -37,11 +45,9 @@ static STORE: LazyLock<Option<Mutex<Store>>> = LazyLock::new(|| {
 fn data_dir() -> Option<PathBuf> {
     #[cfg(target_os = "android")]
     let dir = {
-        use plugin::{data_dir, StoragePlugin};
-        let plugin = StoragePlugin::from_global_ref(crate::android::load_plugin(
-            "dev.traced.storage.StoragePlugin",
-        )?);
-        data_dir(&plugin).ok().map(PathBuf::from)
+        plugin::data_dir(&plugin::construct()?)
+            .ok()
+            .map(PathBuf::from)
     };
     #[cfg(not(target_os = "android"))]
     let dir = dirs::data_dir().map(|d| d.join("traced"));
@@ -76,6 +82,11 @@ pub fn load_tracks() -> Vec<Arc<Track>> {
     tracks.into_iter().map(Arc::new).collect()
 }
 
+/// Saves `track` (new or edited). `None` if it couldn't be.
+pub fn put_track(track: &TrackBuilder) -> Option<()> {
+    with_store("save track", |s| s.put_track(track))
+}
+
 /// Keeps a finished recording, unless it never got a fix. Blocks on the write.
 pub fn save(summary: &RecordingSummary) {
     if !summary.fixes.is_empty() {
@@ -86,4 +97,43 @@ pub fn save(summary: &RecordingSummary) {
 /// Saved recordings, newest first.
 pub fn recordings() -> Vec<SavedRecording> {
     with_store("load recordings", |s| s.recordings()).unwrap_or_default()
+}
+
+/// A file the user picked, read whole.
+#[derive(Deserialize)]
+pub struct PickedFile {
+    pub name: String,
+    pub text: String,
+}
+
+/// Asks the user for a file through the system picker; `Ok(None)` if they cancel.
+pub async fn pick_file() -> Result<Option<PickedFile>, String> {
+    #[cfg(target_os = "android")]
+    return tokio::task::spawn_blocking(|| {
+        #[derive(Deserialize)]
+        struct Reply {
+            ok: bool,
+            data: Option<PickedFile>,
+            #[serde(default)]
+            detail: String,
+        }
+        let plugin = plugin::construct().ok_or("the storage plugin failed to load")?;
+        let reply: Reply =
+            serde_json::from_str(&plugin::pick_file(&plugin)?).map_err(|e| e.to_string())?;
+        reply.ok.then_some(reply.data).ok_or(reply.detail)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let Some(file) = rfd::AsyncFileDialog::new().pick_file().await else {
+            return Ok(None);
+        };
+        let text = String::from_utf8(file.read().await).map_err(|e| e.to_string())?;
+        Ok(Some(PickedFile {
+            name: file.file_name(),
+            text,
+        }))
+    }
 }
