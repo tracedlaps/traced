@@ -3,7 +3,7 @@
 use std::{path::Path, sync::Arc};
 
 use chrono::{DateTime, Utc};
-use rusqlite::{Connection, OpenFlags, backup::Progress, params};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, backup::Progress, params};
 use tracing::warn;
 use uuid::Uuid;
 
@@ -132,13 +132,52 @@ impl Store {
     }
 
     /// Inserts or updates the track with `track`'s uuid. Refuses one that doesn't build.
+    /// Moving an existing track's gates re-times its recordings from their fixes.
     pub fn put_track(&self, track: &TrackBuilder) -> Result<(), StoreError> {
-        track.clone().build()?;
+        let built = Arc::new(track.clone().build()?);
+        let moved = self.track(track.uuid())?.is_some_and(|old| !old.same_geometry(track));
+        let tx = self.db.unchecked_transaction()?;
         // Not INSERT OR REPLACE: that deletes the row first, which would cascade to its sessions.
-        self.db.execute(
+        tx.execute(
             "INSERT INTO tracks (id, spec) VALUES (?1, ?2) ON CONFLICT (id) DO UPDATE SET spec = excluded.spec",
             params![track.uuid().to_string(), serde_json::to_string(track)?],
         )?;
+        if moved {
+            self.retime(&built)?;
+        }
+        Ok(tx.commit()?)
+    }
+
+    /// The stored spec of track `id`, unbuilt, for editing.
+    pub fn track(&self, id: Uuid) -> Result<Option<TrackBuilder>, StoreError> {
+        let spec: Option<String> = self
+            .db
+            .query_row("SELECT spec FROM tracks WHERE id = ?1", [id.to_string()], |r| r.get(0))
+            .optional()?;
+        Ok(spec.map(|s| serde_json::from_str(&s)).transpose()?)
+    }
+
+    /// Replays each finished recording of `track` against its current gates.
+    fn retime(&self, track: &Arc<Track>) -> Result<(), StoreError> {
+        let recordings = self
+            .db
+            .prepare("SELECT id, started_at FROM recordings WHERE track_id = ?1 AND ended_at IS NOT NULL")?
+            .query_map([track.uuid.to_string()], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        for (id, started_at) in recordings {
+            let summary = RecordingSummary::replay(
+                DateTime::from_timestamp_millis(started_at).unwrap_or_default(),
+                self.fixes(Uuid::parse_str(&id)?)?,
+                Some(track.clone()),
+            );
+            let completed = summary.session.map(|s| serde_json::to_string(&s.completed));
+            self.db.execute(
+                "UPDATE recordings SET completed = ?2 WHERE id = ?1",
+                params![id, completed.transpose()?],
+            )?;
+        }
         Ok(())
     }
 
@@ -333,7 +372,7 @@ mod tests {
     use super::*;
     use crate::{
         speedometer::tests::fix,
-        track::{Lap, TrackShape, Waypoint},
+        track::{Completed, Lap, TrackShape, Waypoint},
     };
     use chrono::TimeDelta;
 
@@ -379,6 +418,41 @@ mod tests {
 
         store.delete_track(a.uuid()).unwrap();
         assert_eq!(names(&store), ["B"]);
+    }
+
+    #[test]
+    fn moving_a_gate_retimes_recordings_and_renaming_does_not() {
+        let store = Store::open(":memory:").unwrap();
+        let w = [49.0, 49.0005, 49.001].map(|lat| Waypoint::new(6.0, lat));
+        let open = |name, start| {
+            Track::builder(name, TrackShape::Open { start, finish: w[2] }).waypoints(w)
+        };
+        let spec = open("Sprint", w[0]);
+        store.put_track(&spec).unwrap();
+        // North at ~11 m/s, from just before the start to just past the finish.
+        let fixes: Vec<_> = (0..13)
+            .map(|s| GPSFix {
+                latitude: 48.99995 + 0.0001 * s as f64,
+                longitude: 6.0,
+                ..fix(s, 11.0)
+            })
+            .collect();
+        let at = fixes[0].timestamp;
+        let built = Arc::new(spec.clone().build().unwrap());
+        save(&store, &RecordingSummary::replay(at, fixes.clone(), Some(built)));
+        let session = || store.recordings().unwrap()[0].session.clone().unwrap();
+        let before = session();
+        assert!(matches!(before.completed, Completed::Run(Some(_))), "{before:?}");
+
+        store.put_track(&open("Renamed", w[0]).with_uuid(spec.uuid())).unwrap();
+        assert_eq!(session(), before);
+
+        let moved = open("Renamed", w[1]).with_uuid(spec.uuid());
+        store.put_track(&moved).unwrap();
+        let replayed = RecordingSummary::replay(at, fixes, Some(Arc::new(moved.build().unwrap())));
+        assert_ne!(session(), before);
+        assert_eq!(Some(session()), replayed.session);
+        assert_eq!(store.track(spec.uuid()).unwrap().unwrap().name(), "Renamed");
     }
 
     #[test]

@@ -83,7 +83,7 @@ pub struct Sector<'a> {
 }
 
 /// Where the gates are placed, per track kind.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum TrackShape {
     Open { start: Waypoint, finish: Waypoint },
     Closed { gate: Waypoint },
@@ -110,6 +110,28 @@ pub struct TrackBuilder {
 impl TrackBuilder {
     pub fn uuid(&self) -> Uuid {
         self.uuid
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn shape(&self) -> TrackShape {
+        self.shape
+    }
+
+    pub fn waypoint_list(&self) -> &[Waypoint] {
+        &self.waypoints
+    }
+
+    pub fn sector_placements(&self) -> &[Waypoint] {
+        &self.sector_placements
+    }
+
+    /// Whether both place the same gates on the same waypoints, whatever their names.
+    pub fn same_geometry(&self, other: &Self) -> bool {
+        (self.shape, &self.waypoints, &self.sector_placements)
+            == (other.shape, &other.waypoints, &other.sector_placements)
     }
 
     /// Keeps a track's identity across rebuilds; `Track::builder` picks a random one.
