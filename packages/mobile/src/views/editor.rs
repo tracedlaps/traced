@@ -45,6 +45,7 @@ pub fn Import() -> Element {
             h1 { "Editor" }
             div { class: "scroll",
                 Link { class: "button", to: Route::NewTrack {}, "Create new track" }
+                Link { class: "button secondary", to: Route::RecordTrack {}, "Record a track" }
                 button { class: "button secondary", onclick: pick, "Import a CSV, GPX or KML file" }
                 if let Some(e) = error() {
                     p { class: "error", "{e}" }
@@ -99,7 +100,7 @@ pub fn EditTrack(id: Uuid) -> Element {
 /// Lay out a track's waypoints on the map, name it, say whether it loops, and place its start,
 /// finish and sector gates on waypoints. Saves (or deletes) the track `initial` was loaded from.
 #[component]
-fn Editor(initial: Draft, on_close: EventHandler) -> Element {
+pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
     let mut tracks = use_context::<Signal<Vec<Arc<Track>>>>();
     let ctx = use_context::<RecorderCtx>();
     let id = initial.uuid;
@@ -135,6 +136,7 @@ fn Editor(initial: Draft, on_close: EventHandler) -> Element {
             closed: d.closed,
             midpoints: mode() == Mode::Draw,
             overlay: preview().1,
+            ..View::default()
         }
     });
     // Its gates can't move, nor it go, while it's being recorded.
@@ -349,7 +351,7 @@ enum Mode {
 
 /// The track being edited, its gates as indices into `waypoints`.
 #[derive(Clone, Default, PartialEq)]
-struct Draft {
+pub(super) struct Draft {
     /// A saved track's; `None` until an import is first saved.
     uuid: Option<Uuid>,
     name: String,
@@ -363,7 +365,7 @@ struct Draft {
 
 impl Draft {
     /// Start/finish (or a Closed track's gate) on the end waypoints, no sectors.
-    fn imported(name: String, w: Vec<Waypoint>) -> Self {
+    pub(super) fn imported(name: String, w: Vec<Waypoint>) -> Self {
         Self {
             name,
             closed: import::looks_closed(&w),

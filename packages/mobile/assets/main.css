@@ -108,6 +108,8 @@ small.interrupted { color: var(--accent); }
 .leaflet-marker-icon.waypoint.finish::after { background: white; border: 5px solid #1c1917; }
 .leaflet-marker-icon.waypoint.selected::after { inset: 4px; box-shadow: 0 0 0 4px var(--accent); }
 .leaflet-marker-icon.midpoint::after { inset: 8px; background: #fff8; border: 2px dashed white; }
+.leaflet-marker-icon.me::after { content: ""; position: absolute; inset: 10px; border-radius: 50%; background: var(--accent); border: 3px solid white; box-shadow: 0 0 0 6px #0003; }
+.trace { fill: none; stroke: var(--accent); stroke-width: 5px; stroke-linejoin: round; stroke-linecap: round; }
 .track-overlay { pointer-events: none; }
 .track-overlay .outline { fill: none; stroke: white; stroke-opacity: 0.5; stroke-width: 8px; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .track-overlay .sector { fill: none; stroke-width: 5px; stroke-opacity: 0.9; stroke-linejoin: round; vector-effect: non-scaling-stroke; }

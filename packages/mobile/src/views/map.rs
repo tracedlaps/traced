@@ -39,6 +39,10 @@ pub struct View {
     /// Handles between waypoints, dragged to insert one.
     pub midpoints: bool,
     pub overlay: Option<Overlay>,
+    /// A path being traced, drawn as a line.
+    pub trace: Vec<LatLng>,
+    /// Where the phone is; the map follows it until panned.
+    pub me: Option<LatLng>,
 }
 
 /// SVG elements drawn over `bounds` (south-west, north-east).
@@ -98,10 +102,20 @@ enum Layer {
     Streets,
 }
 
+/// The street (else the place) at `p`, from Nominatim, through the WebView like search.
+pub async fn street_at(p: LatLng) -> Option<String> {
+    let js = format!(
+        "try {{ const r = await (await fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=17&lat={}&lon={}')).json(); \
+         return r.address?.road ?? r.name ?? null; }} catch {{ return null; }}",
+        p.lat, p.lng
+    );
+    document::eval(&js).join::<Option<String>>().await.ok().flatten().filter(|s| !s.is_empty())
+}
+
 /// A Leaflet map of `view`, with place search, a satellite/streets toggle and buttons to fit
-/// the track or go to the phone's location. Fits the track on open, or locates when there is none.
+/// the track or go to the phone's location. Fits the track on open, or, unless `!locate`, locates when there is none.
 #[component]
-pub fn Map(view: ReadSignal<View>, on_event: EventHandler<MapEvent>) -> Element {
+pub fn Map(view: ReadSignal<View>, on_event: EventHandler<MapEvent>, #[props(default = true)] locate: bool) -> Element {
     let ctx = use_context::<RecorderCtx>();
     let mut map = use_signal(|| None::<Eval>);
     let mut query = use_signal(String::new);
@@ -115,7 +129,7 @@ pub fn Map(view: ReadSignal<View>, on_event: EventHandler<MapEvent>) -> Element 
         }
     };
     use_effect(move || send(ToMap::View(view())));
-    let locate = move || async move {
+    let find_me = move || async move {
         note.set(Some("Finding your location…".into()));
         match ctx.locate().await {
             Some(fix) => {
@@ -136,8 +150,8 @@ pub fn Map(view: ReadSignal<View>, on_event: EventHandler<MapEvent>) -> Element 
                 onmounted: move |_| async move {
                     let mut eval = document::eval(MAP_JS);
                     map.set(Some(eval));
-                    if view.peek().points.is_empty() {
-                        spawn(locate());
+                    if locate && view.peek().points.is_empty() {
+                        spawn(find_me());
                     }
                     while let Ok(msg) = eval.recv::<FromMap>().await {
                         match msg {
@@ -198,7 +212,7 @@ pub fn Map(view: ReadSignal<View>, on_event: EventHandler<MapEvent>) -> Element 
                         Layer::Streets => "Satellite",
                     }
                 }
-                button { onclick: move |_| locate(), "My location" }
+                button { onclick: move |_| find_me(), "My location" }
                 if !view.read().points.is_empty() {
                     button { onclick: move |_| send(ToMap::Fit), "Fit track" }
                 }

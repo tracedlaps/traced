@@ -24,6 +24,9 @@ const icon = (className) => L.divIcon({ className, iconSize: [36, 36] });
 map.on('click', (e) => dioxus.send({ tap_map: ll(e.latlng) }));
 
 let markers = [], midpoints = [], overlay = null, first = true;
+// The traced path, the phone's position, and whether the map follows it (until panned).
+let trace = null, me = null, follow = true;
+map.on('dragstart', () => (follow = false));
 
 // Handles to insert a waypoint, halfway along each segment long enough on screen to hold one.
 let shown = null;
@@ -78,6 +81,19 @@ function draw(view) {
         overlay = L.svgOverlay(svg, view.overlay.bounds).addTo(map);
     }
 
+    if (view.trace.length) (trace ??= L.polyline([], { className: 'trace', interactive: false }).addTo(map)).setLatLngs(view.trace);
+    else {
+        trace?.remove();
+        trace = null;
+    }
+    if (view.me) {
+        (me ??= L.marker(view.me, { icon: icon('me'), interactive: false, keyboard: false }).addTo(map)).setLatLng(view.me);
+        if (follow) map.getZoom() < 15 ? map.setView(view.me, 17) : map.panTo(view.me);
+    } else {
+        me?.remove();
+        me = null;
+    }
+
     if (first) fit();
     first = false;
 }
@@ -101,7 +117,10 @@ while (true) {
     }
     if (msg.view) draw(msg.view);
     if (msg.search) await search(msg.search);
-    if (msg.fly) map.flyTo([msg.fly.lat, msg.fly.lng], 17);
+    if (msg.fly) {
+        follow = true;
+        map.flyTo([msg.fly.lat, msg.fly.lng], 17);
+    }
     if (msg.layer) {
         layer.remove();
         layer = layers[msg.layer].addTo(map).bringToBack();

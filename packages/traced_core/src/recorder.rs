@@ -11,7 +11,7 @@ use crate::{
     gps::{GPSFix, GpsError},
     speedometer::{Speedometer, SpeedometerSnapshot},
     timing::Reference,
-    track::{Correlator, LiveSessionSnapshot, Session, Track},
+    track::{Correlator, LiveSessionSnapshot, Session, Track, Waypoint, trace::Trace},
 };
 
 /// A stateful accumulator fed one fix at a time; publishes its own snapshot.
@@ -24,6 +24,7 @@ pub struct Recorder {
     fix: watch::Sender<Option<GPSFix>>,
     speedometer: Speedometer,
     correlator: Option<Correlator>,
+    trace: Option<Trace>,
     /// Sees each fix too, e.g. to save it as it arrives.
     journal: Option<Box<dyn FixConsumer + Send>>,
     started_at: DateTime<Utc>,
@@ -32,28 +33,32 @@ pub struct Recorder {
 
 impl Recorder {
     /// Spawns the recording on the current tokio runtime. With a `track`, it's also timed,
-    /// against `reference` if there is one.
+    /// against `reference` if there is one. With `trace`, its path is traced to author a track from.
     pub fn start(
         fixes: BoxStream<'static, Result<GPSFix, GpsError>>,
         track: Option<Arc<Track>>,
         reference: Option<Reference>,
+        trace: bool,
         started_at: DateTime<Utc>,
         journal: Option<Box<dyn FixConsumer + Send>>,
     ) -> Recording {
         let (speedometer, speed_rx) = Speedometer::new();
         let (correlator, session) = track.map(|t| Correlator::new(t, reference)).unzip();
+        let (trace, trace_rx) = trace.then(Trace::new).unzip();
         let (fix, fix_rx) = watch::channel(None);
         let (stop, stop_rx) = oneshot::channel();
         Recording {
             fix: fix_rx,
             speedometer: speed_rx,
             session,
+            trace: trace_rx,
             stop,
             task: tokio::spawn(
                 Self {
                     fix,
                     speedometer,
                     correlator,
+                    trace,
                     journal,
                     started_at,
                     fixes: Vec::new(),
@@ -80,6 +85,9 @@ impl Recorder {
                         if let Some(c) = &mut self.correlator {
                             c.on_fix(fix);
                         }
+                        if let Some(t) = &mut self.trace {
+                            t.on_fix(fix);
+                        }
                         if let Some(j) = &mut self.journal {
                             j.on_fix(fix);
                         }
@@ -93,6 +101,7 @@ impl Recorder {
             started_at: self.started_at,
             fixes: self.fixes,
             session: self.correlator.map(Correlator::into_session),
+            trace: self.trace.map(Trace::into_waypoints),
             speedometer: self.speedometer.snapshot(),
         }
     }
@@ -105,6 +114,8 @@ pub struct Recording {
     pub speedometer: watch::Receiver<SpeedometerSnapshot>,
     /// `None` when recording without a track.
     pub session: Option<watch::Receiver<LiveSessionSnapshot>>,
+    /// The simplified path so far; `None` unless tracing.
+    pub trace: Option<watch::Receiver<Arc<[Waypoint]>>>,
     stop: oneshot::Sender<()>,
     task: JoinHandle<RecordingSummary>,
 }
@@ -122,6 +133,8 @@ pub struct RecordingSummary {
     pub started_at: DateTime<Utc>,
     pub session: Option<Session>,
     pub speedometer: SpeedometerSnapshot,
+    /// The traced path's waypoints, when tracing.
+    pub trace: Option<Vec<Waypoint>>,
     /// Every fix received, in order: enough to replay or re-time the recording later.
     pub fixes: Vec<GPSFix>,
 }
@@ -141,6 +154,7 @@ impl RecordingSummary {
             started_at,
             session: correlator.map(Correlator::into_session),
             speedometer: speedometer.snapshot(),
+            trace: None,
             fixes,
         }
     }
@@ -159,7 +173,7 @@ mod tests {
             Err(GpsError::DeviceNotFound),
             Ok(fix(1, 10.0)),
         ]);
-        let mut rec = Recorder::start(fixes.boxed(), None, None, Utc::now(), None);
+        let mut rec = Recorder::start(fixes.boxed(), None, None, false, Utc::now(), None);
         while rec.speedometer.changed().await.is_ok() {} // closes when the stream ends
         let summary = rec.stop().await;
         assert_eq!(summary.speedometer.distance_m, 10.0);
@@ -168,7 +182,7 @@ mod tests {
 
     #[tokio::test]
     async fn stop_ends_endless_stream() {
-        let rec = Recorder::start(stream::pending().boxed(), None, None, Utc::now(), None);
+        let rec = Recorder::start(stream::pending().boxed(), None, None, false, Utc::now(), None);
         assert_eq!(rec.stop().await.speedometer, SpeedometerSnapshot::default());
     }
 
@@ -183,9 +197,20 @@ mod tests {
             .waypoints([Waypoint::new(-9.0, 38.7), Waypoint::new(-8.998, 38.7)])
             .build()
             .unwrap();
-        let rec = Recorder::start(stream::pending().boxed(), Some(Arc::new(track)), None, Utc::now(), None);
+        let rec = Recorder::start(stream::pending().boxed(), Some(Arc::new(track)), None, false, Utc::now(), None);
         assert!(rec.session.is_some());
         assert!(rec.stop().await.session.is_some());
+    }
+
+    #[tokio::test]
+    async fn trace_publishes_the_path_and_hands_back_its_waypoints() {
+        use crate::track::correlator::tests::fix;
+        let fixes = (0..=10).map(|i| Ok(fix((i as f64 * 10.0, 0.0), i as f64)));
+        let mut rec = Recorder::start(stream::iter(fixes).boxed(), None, None, true, Utc::now(), None);
+        let mut trace = rec.trace.clone().unwrap();
+        while rec.speedometer.changed().await.is_ok() {}
+        assert_eq!(trace.borrow_and_update().len(), 2);
+        assert_eq!(rec.stop().await.trace.map(|w| w.len()), Some(2));
     }
 
     struct Collect(Arc<std::sync::Mutex<Vec<GPSFix>>>);
@@ -205,6 +230,7 @@ mod tests {
             stream::iter(fixes.clone().into_iter().map(Ok)).boxed(),
             Some(track.clone()),
             None,
+            false,
             Utc::now(),
             Some(Box::new(Collect(journal.clone()))),
         );
@@ -219,7 +245,7 @@ mod tests {
     #[tokio::test]
     async fn pushes_snapshots_then_closes() {
         let (tx, rx) = futures::channel::mpsc::unbounded();
-        let mut rec = Recorder::start(rx.boxed(), None, None, Utc::now(), None);
+        let mut rec = Recorder::start(rx.boxed(), None, None, false, Utc::now(), None);
         tx.unbounded_send(Ok(fix(0, 12.0))).unwrap();
         rec.speedometer.changed().await.unwrap();
         assert_eq!(rec.speedometer.borrow().current_speed_ms, 12.0);

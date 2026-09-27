@@ -509,6 +509,7 @@ mod tests {
             started_at: at(secs),
             session,
             speedometer,
+            trace: None,
             fixes,
         }
     }

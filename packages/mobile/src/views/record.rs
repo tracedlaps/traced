@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use dioxus::prelude::*;
-use traced_core::{gps::GpsError, timing::best_lap, track::Track};
+use traced_core::{timing::best_lap, track::Track};
 
-use super::{gps_status, lap_time, timed_m};
+use super::{gps_status, lap_time, refusal, timed_m};
 use crate::{gps::wire::Permission, recorder::RecorderCtx, storage, Route};
 
 #[component]
@@ -102,18 +102,14 @@ fn StartPanel(track: Option<usize>) -> Element {
         }
         button {
             // The shell's bar leads back to a recording in progress.
-            disabled: ctx.recording.read().is_some(),
+            disabled: ctx.recording.read().is_some() || ctx.capture.read().is_some(),
             onclick: move |_| async move {
                 match ctx.start(track.and_then(|i| tracks.read().get(i).cloned())).await {
                     Ok(()) => {
                         refused.set(None);
                         navigator().push(Route::Live {});
                     }
-                    Err(e) => refused.set(Some(match e {
-                        GpsError::PermissionDenied => "Location permission denied. It's needed to record.".into(),
-                        GpsError::LocationDisabled => "Location is turned off. Turn it on to record.".into(),
-                        e => e.to_string(),
-                    })),
+                    Err(e) => refused.set(Some(refusal(e))),
                 }
             },
             "Start"

@@ -1,6 +1,7 @@
 pub(crate) mod correlator;
 pub mod import;
 mod session;
+pub mod trace;
 pub use correlator::{Correlator, LiveSessionSnapshot, LiveStatus};
 pub use session::{Completed, Lap, Run, Session};
 

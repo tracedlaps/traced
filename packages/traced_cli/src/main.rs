@@ -70,7 +70,7 @@ async fn main() {
     gps_provider.init().unwrap();
 
     // Record until the stream ends or Ctrl-C.
-    let mut rec = Recorder::start(gps_provider.stream_fixes(), Some(Arc::new(track)), None, chrono::Utc::now(), None);
+    let mut rec = Recorder::start(gps_provider.stream_fixes(), Some(Arc::new(track)), None, false, chrono::Utc::now(), None);
     if let Some(mut live) = rec.session.clone() {
         tokio::spawn(async move {
             while live.changed().await.is_ok() {

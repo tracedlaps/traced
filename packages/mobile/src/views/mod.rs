@@ -1,4 +1,5 @@
 mod backup;
+mod capture;
 mod editor;
 mod history;
 mod live;
@@ -8,6 +9,7 @@ mod results;
 mod shell;
 mod track_map;
 
+pub use capture::RecordTrack;
 pub use editor::{EditTrack, Import, NewTrack};
 pub use history::{History, SavedResults};
 pub use live::Live;
@@ -16,7 +18,19 @@ pub use results::Results;
 pub use shell::Shell;
 use chrono::TimeDelta;
 use dioxus::prelude::*;
-use traced_core::{gps::GpsStatus, track::Track};
+use traced_core::{
+    gps::{GpsError, GpsStatus},
+    track::Track,
+};
+
+/// Why the GPS couldn't start, for the user.
+fn refusal(e: GpsError) -> String {
+    match e {
+        GpsError::PermissionDenied => "Location permission denied. It's needed to record.".into(),
+        GpsError::LocationDisabled => "Location is turned off. Turn it on to record.".into(),
+        e => e.to_string(),
+    }
+}
 
 /// `m:ss.t`, the one format for every lap, split and clock.
 fn lap_time(secs: f64) -> String {

@@ -12,7 +12,7 @@ use traced_core::{
     },
     recorder::{Recorder, Recording, RecordingSummary},
     speedometer::SpeedometerSnapshot,
-    track::{LiveSessionSnapshot, Track},
+    track::{LiveSessionSnapshot, Track, Waypoint},
 };
 
 use uuid::Uuid;
@@ -31,6 +31,10 @@ type Fixes = BoxStream<'static, Result<GPSFix, GpsError>>;
 #[derive(Clone, Copy)]
 pub struct RecorderCtx {
     pub recording: Signal<Option<Recording>>,
+    /// A track being traced (see `capture`): not a recording, so neither saved nor timed.
+    pub capture: Signal<Option<Recording>>,
+    /// The capture's path so far.
+    pub trace: Signal<Option<Arc<[Waypoint]>>>,
     pub last_summary: Signal<Option<RecordingSummary>>,
     /// The current recording's id in the store; `None` if it isn't being saved.
     saved: Signal<Option<Uuid>>,
@@ -72,6 +76,8 @@ impl RecorderCtx {
         // Owned by the root scope, where `spawn_forever` runs the tasks that write them.
         let ctx = Self {
             recording: Signal::new_in_scope(None, ScopeId::ROOT),
+            capture: Signal::new_in_scope(None, ScopeId::ROOT),
+            trace: Signal::new_in_scope(None, ScopeId::ROOT),
             last_summary: Signal::new_in_scope(None, ScopeId::ROOT),
             saved: Signal::new_in_scope(None, ScopeId::ROOT),
             track: Signal::new_in_scope(None, ScopeId::ROOT),
@@ -105,9 +111,8 @@ impl RecorderCtx {
         let reference = track.as_deref().and_then(storage::reference);
         let started_at = Utc::now();
         let (saved, journal) = storage::begin(started_at, track.as_deref()).unzip();
-        let recording = Recorder::start(fixes, track.clone(), reference, started_at, journal);
-        bridge(recording.fix.clone(), self.fix, identity);
-        bridge(recording.speedometer.clone(), self.speed, Some);
+        let recording = Recorder::start(fixes, track.clone(), reference, false, started_at, journal);
+        self.show(&recording);
         if let Some(live) = recording.session.clone() {
             bridge(live, self.live, Some);
         }
@@ -117,6 +122,28 @@ impl RecorderCtx {
         self.recording.set(Some(recording));
         self.keep_screen_on(true);
         Ok(())
+    }
+
+    /// Traces a drive or walk to make a track from, on the device GPS (asking for the location
+    /// permission if needed) or the mock driving the first preset.
+    pub async fn capture(mut self) -> Result<(), GpsError> {
+        let fixes = match self.device_fixes().await? {
+            Some(fixes) => fixes,
+            None => self.mock_fixes(None),
+        };
+        let capture = Recorder::start(fixes, None, None, true, Utc::now(), None);
+        self.show(&capture);
+        bridge(capture.trace.clone().expect("tracing"), self.trace, Some);
+        self.capture.set(Some(capture));
+        self.keep_screen_on(true);
+        Ok(())
+    }
+
+    /// Stops the capture; its path's waypoints, if one was running.
+    pub async fn end_capture(mut self) -> Option<Vec<Waypoint>> {
+        let capture = self.capture.write().take()?;
+        self.keep_screen_on(false);
+        capture.stop().await.trace
     }
 
     pub fn stop(mut self) {
@@ -136,6 +163,12 @@ impl RecorderCtx {
 }
 
 impl RecorderCtx {
+    /// Mirrors the fixes and speedometer of `recording` into their signals.
+    fn show(self, recording: &Recording) {
+        bridge(recording.fix.clone(), self.fix, identity);
+        bridge(recording.speedometer.clone(), self.speed, Some);
+    }
+
     /// Drives the chosen track (or the first preset) on the mock GPS.
     fn mock_fixes(self, track: Option<Arc<Track>>) -> Fixes {
         let driven = track
@@ -154,9 +187,9 @@ impl RecorderCtx {
         gps.stream_fixes()
     }
 
-    /// Where the phone is: the recording's latest fix, or the device GPS's first, if one comes soon.
+    /// Where the phone is: the recording's (or capture's) latest fix, or the device GPS's first, if one comes soon.
     pub async fn locate(self) -> Option<GPSFix> {
-        if self.recording.peek().is_some() {
+        if self.recording.peek().is_some() || self.capture.peek().is_some() {
             return *self.fix.peek();
         }
         let mut fixes = self.device_fixes().await.ok()??;
@@ -207,14 +240,14 @@ impl RecorderCtx {
 
 /// Copies each change into `signal` (through `into`), then clears it once the recording
 /// drops the sender. `spawn_forever`: a component-scoped task would die when its screen unmounts.
-fn bridge<T: Copy + 'static, U: 'static>(
+fn bridge<T: Clone + 'static, U: 'static>(
     mut rx: watch::Receiver<T>,
     mut signal: Signal<Option<U>>,
     into: fn(T) -> Option<U>,
 ) {
     spawn_forever(async move {
         loop {
-            signal.set(into(*rx.borrow_and_update()));
+            signal.set(into(rx.borrow_and_update().clone()));
             if rx.changed().await.is_err() {
                 break;
             }

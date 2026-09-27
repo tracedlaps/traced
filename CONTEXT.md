@@ -38,6 +38,9 @@ A finished stored `RecordingSummary` without its fixes, which load separately (`
 **Waypoint**:
 A single GPS coordinate placed by the user while authoring a `Track`. Sparse — the raw authoring input, regardless of source (manual placement, future map-import).
 
+**Trace**:
+`FixConsumer` that turns a drive or walk into sparse `Waypoint`s to author a `Track` from (`track::trace`): drops inaccurate and near-stationary fixes, simplifies (Douglas–Peucker), pushes the path so far, and cuts a loop driven more than once where it first gets back to its start. A capture is not a recording: never saved, never timed.
+
 **Polyline**:
 Dense, distance-indexed point sequence derived from a `Track`'s `Waypoint`s, used for runtime geometry (nearest-point projection, distance-along-track). Never authored directly.
 
