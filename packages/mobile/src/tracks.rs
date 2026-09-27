@@ -6,7 +6,7 @@ use uuid::Uuid;
 /// A built-in track, seeded into an empty store. Fixed uuids keep `mock_speed_kmh` findable.
 pub struct Preset {
     pub track: TrackBuilder,
-    /// How fast the mock GPS drives it, until a real provider exists.
+    /// The mock GPS's top speed on it; it slows for the corners.
     pub mock_speed_kmh: f64,
 }
 
@@ -58,10 +58,10 @@ pub static PRESETS: LazyLock<Vec<Preset>> = LazyLock::new(|| {
         .waypoints(run);
 
     [
-        (mondercange, 50.0),
-        (senhora_da_lage, 90.0),
-        (sprint, 60.0),
-        (lisbon, 36.0),
+        (mondercange, 70.0),
+        (senhora_da_lage, 100.0),
+        (sprint, 80.0),
+        (lisbon, 50.0),
     ]
     .into_iter()
     .zip(1..)
@@ -72,12 +72,12 @@ pub static PRESETS: LazyLock<Vec<Preset>> = LazyLock::new(|| {
     .collect()
 });
 
-/// How fast the mock GPS drives `track`: its preset's speed, or 50 km/h.
+/// The mock GPS's top speed on `track`: its preset's, or 60 km/h.
 pub fn mock_speed_kmh(track: &Track) -> f64 {
     PRESETS
         .iter()
         .find(|p| p.track.uuid() == track.uuid)
-        .map_or(50.0, |p| p.mock_speed_kmh)
+        .map_or(60.0, |p| p.mock_speed_kmh)
 }
 
 /// A bundled CSV export's waypoints.

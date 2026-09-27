@@ -64,7 +64,7 @@ async fn main() {
         tracing::info!("Sector {}: {:.1} m", i + 1, sector.length);
     }
 
-    // Laps of the track at 10 m/s, with ±2 m of GPS jitter.
+    // Laps of the track at up to 10 m/s, with ±2 m of GPS jitter.
     let config = MockGPSConfig { jitter_m: 2.0, ..Default::default() };
     let mut gps_provider = MockGPSProvider::drive(&track, 10.0, config);
     gps_provider.init().unwrap();

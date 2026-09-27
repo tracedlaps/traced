@@ -7,6 +7,14 @@ use tokio::sync::watch;
 
 use crate::gps::{FixSource, GPSFix, GpsProvider, GpsStatus};
 use crate::track::{Boundary, Projection, Track};
+use geo::Point;
+
+/// Mock driving limits (m/s²): cornering grip, acceleration and braking.
+const GRIP: f64 = 8.0;
+const ACCEL: f64 = 3.0;
+const BRAKE: f64 = 6.0;
+/// How far (m) either side of a point its heading change is measured, for the curvature there.
+const CURVE_WINDOW: f64 = 10.0;
 
 #[derive(Debug)]
 pub struct MockGPSConfig {
@@ -111,19 +119,19 @@ impl MockGPSProvider {
         Self::new(fixes, config)
     }
 
-    /// Drives `track` at a constant ~`speed_ms`, one fix per `config.interval`: endless laps
-    /// on a Closed track (overrides `loop_fixes`), a single pass on an Open one.
-    /// Speed is nudged so a lap/run is a whole number of fixes, which keeps its time exact.
+    /// Drives `track` at up to `top_speed_ms`, one fix per `config.interval`: endless laps on a
+    /// Closed track (overrides `loop_fixes`), a single pass on an Open one. It slows for corners
+    /// (to what `GRIP` holds at their curvature), braking into and accelerating out of them.
+    /// Speeds are scaled a touch so a lap/run is a whole number of fixes, which keeps its time exact.
     /// Fixes sit half a fix either side of each gate, so the first fix is just before the
     /// start line and an Open run carries straight on past its gates' ends.
-    pub fn drive(track: &Track, speed_ms: f64, mut config: MockGPSConfig) -> Self {
+    pub fn drive(track: &Track, top_speed_ms: f64, mut config: MockGPSConfig) -> Self {
         let length = track.length();
+        let closed = matches!(track.boundary, Boundary::Closed { .. });
         let (start, span) = match &track.boundary {
             Boundary::Closed { gate } => (gate.distance_along_track, length),
             Boundary::Open { start, finish } => (start.distance_along_track, finish.distance_along_track - start.distance_along_track),
         };
-        let n = (span / (speed_ms * config.interval.as_secs_f64())).round().max(1.0) as usize;
-        let step = span / n as f64;
         let at = |d: f64| match &track.boundary {
             Boundary::Closed { .. } => track.point_at(d.rem_euclid(length)),
             Boundary::Open { start, finish } => {
@@ -136,19 +144,71 @@ impl MockGPSProvider {
                 track.projection.unproject((gate.center.0 + gate.direction * (d - gate.distance_along_track)).into())
             }
         };
+
+        // Speed every ~1 m: the corner limit, then capped by braking ahead and accelerating behind.
+        let m = span.ceil().max(1.0) as usize;
+        let ds = span / m as f64;
+        let xy = |d: f64| track.projection.project(at(d));
+        let heading = |a: Point<f64>, b: Point<f64>| (b.y() - a.y()).atan2(b.x() - a.x());
+        let mut v: Vec<f64> = (0..=m)
+            .map(|i| {
+                let d = start + i as f64 * ds;
+                let (a, b, c) = (xy(d - CURVE_WINDOW), xy(d), xy(d + CURVE_WINDOW));
+                let turn = heading(b, c) - heading(a, b);
+                let curvature = turn.sin().atan2(turn.cos()).abs() / CURVE_WINDOW;
+                (GRIP / curvature).sqrt().min(top_speed_ms)
+            })
+            .collect();
+        // Twice round a loop, so the limits carry across its seam.
+        for _ in 0..=usize::from(closed) {
+            for i in 1..=m {
+                v[i] = v[i].min((v[i - 1].powi(2) + 2.0 * ACCEL * ds).sqrt());
+            }
+            if closed { v[0] = v[m]; }
+            for i in (0..m).rev() {
+                v[i] = v[i].min((v[i + 1].powi(2) + 2.0 * BRAKE * ds).sqrt());
+            }
+            if closed { v[m] = v[0]; }
+        }
+        let mut t = vec![0.0];
+        for i in 1..=m {
+            t.push(t[i - 1] + 2.0 * ds / (v[i - 1] + v[i]));
+        }
+        let interval = config.interval.as_secs_f64();
+        let n = (t[m] / interval).round().max(1.0) as usize;
+        let lap = n as f64 * interval;
+        let k = lap / t[m];
+        t.iter_mut().for_each(|t| *t *= k);
+        v.iter_mut().for_each(|v| *v /= k);
+
+        // Distance along and speed at `tau` seconds after the start line.
+        let along = |tau: f64| {
+            let tau = if closed { tau.rem_euclid(lap) } else { tau };
+            if tau < 0.0 {
+                return (start + tau * v[0], v[0]);
+            }
+            if tau >= lap {
+                return (start + span + (tau - lap) * v[m], v[m]);
+            }
+            let i = t.partition_point(|&x| x <= tau).clamp(1, m);
+            let f = (tau - t[i - 1]) / (t[i] - t[i - 1]);
+            (start + (i as f64 - 1.0 + f) * ds, v[i - 1] + f * (v[i] - v[i - 1]))
+        };
         // A Closed lap's last point is its first; an Open run adds its run-up and run-out.
-        let closed = matches!(track.boundary, Boundary::Closed { .. });
-        let points: Vec<_> = (0..n + 2 * usize::from(!closed)).map(|i| at(start + (i as f64 - 0.5) * step)).collect();
+        let points: Vec<_> = (0..n + 2 * usize::from(!closed))
+            .map(|i| along((i as f64 - 0.5) * interval))
+            .map(|(d, speed)| (at(d), speed))
+            .collect();
         let fixes = points
             .iter()
             .enumerate()
-            .map(|(i, p)| {
-                let next = points.get(i + 1).or(closed.then_some(&points[0])).unwrap_or(p);
-                let d = track.projection.project(*next) - track.projection.project(*p);
+            .map(|(i, &(p, speed))| {
+                let next = points.get(i + 1).or(closed.then_some(&points[0])).map_or(p, |n| n.0);
+                let d = track.projection.project(next) - track.projection.project(p);
                 GPSFix {
                     latitude: p.y(),
                     longitude: p.x(),
-                    speed_ms: (step / config.interval.as_secs_f64()) as f32,
+                    speed_ms: speed as f32,
                     heading_deg: Some(d.x().atan2(d.y()).to_degrees().rem_euclid(360.0) as f32),
                     accuracy: config.jitter_m.max(1.0) as f32,
                     ..Default::default()
@@ -202,7 +262,6 @@ mod tests {
         let track = lisbon_loop();
         let mock = MockGPSProvider::drive(&track, 10.0, MockGPSConfig::default());
         let n = mock.fixes.len();
-        assert_eq!(n, (track.length() / 10.0).round() as usize);
         assert!(mock.config.loop_fixes);
 
         // Starts just before the gate: two laps and a bit, one fix per second.
@@ -243,6 +302,13 @@ mod tests {
         let mock = MockGPSProvider::drive(&lisbon_loop(), 10.0, MockGPSConfig::default());
         // First leg runs due east.
         assert!((mock.fixes[0].heading_deg.unwrap() - 90.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn drive_slows_for_corners() {
+        let speeds: Vec<_> = MockGPSProvider::drive(&lisbon_loop(), 20.0, MockGPSConfig::default()).fixes.iter().map(|f| f.speed_ms).collect();
+        let (min, max) = speeds.iter().fold((f32::MAX, 0.0f32), |(lo, hi), &s| (lo.min(s), hi.max(s)));
+        assert!(max > 18.0 && min < 10.0, "{speeds:?}");
     }
 
     #[tokio::test]
