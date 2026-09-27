@@ -110,6 +110,7 @@ mod tests {
             started_at: Utc::now(),
             session: Some(session),
             speedometer: Default::default(),
+            g: None,
             interrupted: false,
         }
     }

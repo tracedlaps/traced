@@ -44,6 +44,15 @@ small.interrupted { color: var(--accent); }
 .speed { text-align: center; }
 .speed span { font: 700 6rem/1 system-ui; font-variant-numeric: tabular-nums; }
 .speed.idle { justify-content: center; color: var(--muted); }
+/* A fixed column for the dial, so the speed gaining or losing a digit doesn't push it sideways. */
+.speed-row { display: grid; grid-template-columns: 1fr 6rem; align-items: center; gap: 8px; }
+.g-dial { width: 6rem; text-align: center; }
+.g-dial svg { display: block; width: 100%; }
+.g-dial .ring { fill: none; stroke: var(--line); stroke-width: 0.04; }
+.g-dial .peak { fill: var(--muted); }
+/* Glides between snapshots (20 Hz at most), so the ball doesn't step. */
+.g-dial .ball { fill: var(--accent); transition: transform 0.1s linear; }
+.g-dial.calibrating .ball { fill: var(--muted); }
 .stats { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 0; }
 .stats dt { color: var(--muted); }
 .stats dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }

@@ -43,6 +43,12 @@ h1 em { font-style: normal; color: var(--accent); }
 .screen { height: 100%; border-radius: 37px; overflow: hidden; background: var(--bg); display: flex; flex-direction: column; gap: 10px; padding: 40px 16px 16px; font: 13px/1.4 system-ui, sans-serif; }
 .screen .speed { text-align: center; }
 .screen .speed span { display: block; font: 700 4.4rem/1 system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.screen .speed-row { display: grid; grid-template-columns: 1fr 4.5rem; align-items: center; gap: 6px; }
+.g-dial { width: 4.5rem; text-align: center; }
+.g-dial svg { display: block; width: 100%; }
+.g-dial .ring { fill: none; stroke: var(--line); stroke-width: 0.04; }
+.g-dial .peak { fill: var(--muted); }
+.g-dial .ball { fill: var(--accent); transition: transform 0.1s linear; }
 .screen small { display: block; color: var(--muted); font-size: 0.8rem; }
 .screen .stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 16px; margin: 0; }
 .screen .stats dt { color: var(--muted); }

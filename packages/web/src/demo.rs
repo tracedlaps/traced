@@ -138,6 +138,8 @@ struct Sim {
     /// Metres and seconds of the laps before this one.
     done_m: f64,
     done_s: f64,
+    /// Peak braking, acceleration, left and right g.
+    peaks: [f64; 4],
     seed: u64,
 }
 
@@ -158,6 +160,7 @@ impl Sim {
             top_kmh: c.v.iter().cloned().fold(0.0, f64::max) * 3.6,
             done_m: 2.0 * c.length,
             done_s: 2.0 * lap + 0.41,
+            peaks: [0.0; 4],
             seed: 0x9e37_79b9_7f4a_7c15,
         };
         sim.cur = c.lap(sim.pace());
@@ -201,6 +204,25 @@ impl Sim {
         }
         self.sector = s;
         self.top_kmh = self.top_kmh.max(self.speed_kmh());
+        let (lon, lat) = self.g();
+        for (p, g) in self.peaks.iter_mut().zip([-lon, lon, -lat, lat]) {
+            *p = p.max(g);
+        }
+    }
+
+    /// Longitudinal and lateral g (right positive) at the point reached, over ±`WINDOW` metres.
+    fn g(&self) -> (f64, f64) {
+        let c = &*CIRCUIT;
+        let (m, i) = (c.pts.len(), self.index());
+        let k = (WINDOW / c.ds).round() as usize;
+        let (a, b) = ((i + m - k) % m, (i + k) % m);
+        let v = |j: usize| c.ds / (self.cur[j + 1] - self.cur[j]);
+        let heading = |p: (f64, f64), q: (f64, f64)| (q.1 - p.1).atan2(q.0 - p.0);
+        // y is down, so a growing heading turns right.
+        let turn = heading(c.pts[i], c.pts[b]) - heading(c.pts[a], c.pts[i]);
+        let turn = turn.sin().atan2(turn.cos());
+        let (dv, vi) = (v(b) - v(a), v(i));
+        (dv * vi / (2.0 * WINDOW) / 9.81, vi * vi * turn / (k as f64 * c.ds) / 9.81)
     }
 
     fn speed_kmh(&self) -> f64 {
@@ -217,6 +239,31 @@ fn lap_time(secs: f64) -> String {
 #[component]
 fn Delta(secs: f64) -> Element {
     rsx! { span { class: if secs < 0.0 { "delta ahead" } else { "delta behind" }, "{secs:+.2}" } }
+}
+
+/// The app's g-dial: the felt force as a ball in a bowl (braking rolls it up, a left turn right).
+#[component]
+fn GDial(g: (f64, f64), peaks: [f64; 4]) -> Element {
+    const MAX: f64 = 1.5;
+    let at = |x: f64, y: f64| {
+        let k = x.hypot(y).max(MAX) / MAX;
+        (x / k, y / k)
+    };
+    let (x, y) = at(-g.1, g.0);
+    let [brake, accel, left, right] = peaks;
+    let marks = [(0.0, -brake), (0.0, accel), (left, 0.0), (-right, 0.0)].into_iter().filter(|p| p.0.hypot(p.1) > 0.05).map(|(x, y)| at(x, y));
+    rsx! {
+        div { class: "g-dial",
+            svg { view_box: "-1.6 -1.6 3.2 3.2",
+                for r in [0.5, 1.0, 1.5] { circle { class: "ring", r } }
+                line { class: "ring", x1: -MAX, x2: MAX }
+                line { class: "ring", y1: -MAX, y2: MAX }
+                for (cx, cy) in marks { circle { class: "peak", cx, cy, r: 0.06 } }
+                circle { class: "ball", r: 0.16, style: "transform: translate({x}px, {y}px)" }
+            }
+            small { "{g.0.hypot(g.1):.2} g" }
+        }
+    }
 }
 
 #[component]
@@ -251,9 +298,12 @@ pub fn Phone() -> Element {
     let avg = (s.done_m + i as f64 * c.ds) / (s.done_s + s.t) * 3.6;
 
     rsx! {
-        div { class: "phone", aria_label: "Traced recording a lap: speed, lap clock and live delta",
+        div { class: "phone", aria_label: "Traced recording a lap: speed, g-forces, lap clock and live delta",
             div { class: "screen",
-                div { class: "speed", span { "{s.speed_kmh():.0}" } small { "km/h" } }
+                div { class: "speed-row",
+                    div { class: "speed", span { "{s.speed_kmh():.0}" } small { "km/h" } }
+                    GDial { g: s.g(), peaks: s.peaks }
+                }
                 dl { class: "stats",
                     dt { "Top" } dd { "{s.top_kmh:.0} km/h" }
                     dt { "Avg" } dd { "{avg:.0} km/h" }
@@ -293,5 +343,21 @@ pub fn Phone() -> Element {
                 div { class: "stop", "Stop" }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn g_stays_within_the_drives_limits() {
+        let mut sim = Sim::new();
+        for _ in 0..3000 {
+            sim.step(0.05);
+        }
+        let [brake, accel, left, right] = sim.peaks;
+        assert!(left.max(right) > 0.5 && left.max(right) < 1.2 * GRIP / 9.81);
+        assert!(brake > 0.3 && brake < 1.2 * BRAKE / 9.81 && accel > 0.15 && accel < 1.2 * ACCEL / 9.81);
     }
 }

@@ -6,6 +6,7 @@ use rand::RngExt;
 use tokio::sync::watch;
 
 use crate::gps::{FixSource, GPSFix, GpsProvider, GpsStatus};
+use crate::imu::{ImuSample, Mount};
 use crate::track::{Boundary, Projection, Track};
 use geo::Point;
 
@@ -15,6 +16,10 @@ const ACCEL: f64 = 3.0;
 const BRAKE: f64 = 6.0;
 /// How far (m) either side of a point its heading change is measured, for the curvature there.
 const CURVE_WINDOW: f64 = 10.0;
+/// IMU samples per fix interval.
+const SAMPLES_PER_FIX: u32 = 20;
+/// Max random vibration (m/s²) added to each IMU sample, per axis.
+const VIBRATION: f32 = 0.4;
 
 #[derive(Debug)]
 pub struct MockGPSConfig {
@@ -43,6 +48,8 @@ pub struct MockGPSProvider {
     fixes: Vec<GPSFix>,
     last_fix: Arc<Mutex<GPSFix>>,
     status: watch::Sender<GpsStatus>,
+    /// The acceleration (m/s², longitudinal and lateral) until the next fix.
+    motion: watch::Sender<[f32; 2]>,
 }
 
 impl GpsProvider for MockGPSProvider {
@@ -61,17 +68,24 @@ impl GpsProvider for MockGPSProvider {
         let fixes = self.fixes.clone();
         let last_fix = self.last_fix.clone();
         let status = self.status.clone();
+        let motion = self.motion.clone();
+        let next = (1..=fixes.len()).map(|i| fixes.get(i).or(fixes.first().filter(|_| self.config.loop_fixes)).copied());
+        let pairs: Vec<_> = fixes.iter().copied().zip(next).collect();
 
-        let iter: Box<dyn Iterator<Item = GPSFix> + Send> = if self.config.loop_fixes {
-            Box::new(fixes.into_iter().cycle())
+        let iter: Box<dyn Iterator<Item = (GPSFix, Option<GPSFix>)> + Send> = if self.config.loop_fixes {
+            Box::new(pairs.into_iter().cycle())
         } else {
-            Box::new(fixes.into_iter())
+            Box::new(pairs.into_iter())
         };
 
         stream::iter(iter)
-            .then(move |fix| async move {
+            .then(move |pair| async move {
                 let wait = interval.mul_f64(1.0 + rand::rng().random_range(-pace..=pace));
                 tokio::time::sleep(wait).await;
+                pair
+            })
+            .map(move |(fix, next)| {
+                motion.send_replace(next.map_or([0.0; 2], |next| accel(fix, next, interval)));
                 // Stamped on send, like a real device, so looped fixes keep moving forward in time.
                 Ok(GPSFix { timestamp: chrono::Utc::now(), ..jittered(fix, jitter) })
             })
@@ -100,7 +114,23 @@ impl MockGPSProvider {
             fixes,
             last_fix: Arc::new(Mutex::new(GPSFix::default())),
             status: watch::Sender::new(GpsStatus::default()),
+            motion: watch::Sender::new([0.0; 2]),
         }
+    }
+
+    /// A phone's accelerometer, mounted askew, feeling the drive of `stream_fixes`; ends with it.
+    pub fn imu(&self) -> BoxStream<'static, ImuSample> {
+        let mount = mount();
+        let every = self.config.interval / SAMPLES_PER_FIX;
+        stream::unfold(self.motion.subscribe(), move |rx| async move {
+            tokio::time::sleep(every).await;
+            rx.has_changed().ok()?; // the fix stream is gone
+            let [lon, lat] = *rx.borrow();
+            let mut s = mount.sample(chrono::Utc::now(), lon, lat);
+            s.accel = s.accel.map(|a| a + rand::rng().random_range(-VIBRATION..=VIBRATION));
+            Some((s, rx))
+        })
+        .boxed()
     }
 
     pub fn random(samples: u8, config: MockGPSConfig) -> Self {
@@ -220,6 +250,18 @@ impl MockGPSProvider {
     }
 }
 
+/// The mock phone's mount: askew, as a real one would be.
+fn mount() -> Mount {
+    Mount::new(2.5, 1.1, 0.3)
+}
+
+/// The acceleration (m/s², longitudinal and lateral, right positive) driving from `a` to `b`.
+fn accel(a: GPSFix, b: GPSFix, interval: Duration) -> [f32; 2] {
+    let dt = interval.as_secs_f32();
+    let turn = (b.heading_deg.unwrap_or(0.0) - a.heading_deg.unwrap_or(0.0) + 540.0).rem_euclid(360.0) - 180.0;
+    [(b.speed_ms - a.speed_ms) / dt, (a.speed_ms + b.speed_ms) / 2.0 * turn.to_radians() / dt]
+}
+
 /// `fix` moved by up to `jitter_m` metres on each axis.
 fn jittered(fix: GPSFix, jitter_m: f64) -> GPSFix {
     if jitter_m <= 0.0 {
@@ -309,6 +351,40 @@ mod tests {
         let speeds: Vec<_> = MockGPSProvider::drive(&lisbon_loop(), 20.0, MockGPSConfig::default()).fixes.iter().map(|f| f.speed_ms).collect();
         let (min, max) = speeds.iter().fold((f32::MAX, 0.0f32), |(lo, hi), &s| (lo.min(s), hi.max(s)));
         assert!(max > 18.0 && min < 10.0, "{speeds:?}");
+    }
+
+    #[test]
+    fn imu_feels_the_drive() {
+        use crate::imu::GMeter;
+        let mock = MockGPSProvider::drive(&lisbon_loop(), 20.0, MockGPSConfig::default());
+        let (mut g, _rx) = GMeter::new();
+        let mount = mount();
+        let at = |ms: i64| DateTime::UNIX_EPOCH + TimeDelta::milliseconds(ms);
+        // Twice round, counterclockwise: braking into and accelerating out of left turns.
+        let fixes: Vec<_> = mock.fixes.iter().cycle().take(2 * mock.fixes.len() + 1).collect();
+        for (i, w) in fixes.windows(2).enumerate() {
+            g.on_fix(GPSFix { timestamp: at(i as i64 * 1000), ..*w[0] });
+            let [lon, lat] = accel(*w[0], *w[1], mock.config.interval);
+            for k in 1..=SAMPLES_PER_FIX as i64 {
+                g.on_sample(mount.sample(at(i as i64 * 1000 + k * 50), lon, lat));
+            }
+        }
+        let p = g.snapshot().peaks;
+        assert!(g.snapshot().aligned);
+        assert!(p.left > 0.4 && p.right < 0.1 && p.braking > 0.2 && p.accelerating > 0.1, "{p:?}");
+    }
+
+    #[tokio::test]
+    async fn imu_ends_with_the_fixes() {
+        let config = MockGPSConfig { interval: Duration::from_millis(20), ..Default::default() };
+        let mock = MockGPSProvider::drive(&lisbon_loop(), 20.0, config);
+        let (fixes, mut imu) = (mock.stream_fixes(), mock.imu());
+        drop(mock);
+        for _ in 0..3 {
+            assert!(imu.next().await.is_some());
+        }
+        drop(fixes);
+        assert!(imu.next().await.is_none());
     }
 
     #[tokio::test]

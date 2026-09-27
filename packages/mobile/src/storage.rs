@@ -13,6 +13,7 @@ use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use traced_core::{
     gps::GPSFix,
+    imu::ImuSample,
     recorder::{FixConsumer, RecordingSummary},
     store::{SavedRecording, Store, StoreError},
     timing::Reference,
@@ -130,12 +131,16 @@ pub fn delete_track(id: Uuid) -> Option<()> {
     with_store("delete track", |s| s.delete_track(id))
 }
 
-/// Saves each fix as it arrives, so a crash loses at most the one being written.
+/// Saves each fix and sample as it arrives, so a crash loses at most the one being written.
 struct Journal(Uuid);
 
 impl FixConsumer for Journal {
     fn on_fix(&mut self, fix: GPSFix) {
         with_store("save fix", |s| s.append_fix(self.0, &fix));
+    }
+
+    fn on_sample(&mut self, sample: ImuSample) {
+        with_store("save IMU sample", |s| s.append_sample(self.0, &sample));
     }
 }
 

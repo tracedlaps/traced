@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use futures::{StreamExt, stream::BoxStream};
+use futures::{StreamExt, stream::{self, BoxStream}};
 use tokio::{
     sync::{oneshot, watch},
     task::JoinHandle,
@@ -9,6 +9,7 @@ use tokio::{
 
 use crate::{
     gps::{GPSFix, GpsError},
+    imu::{GForceSnapshot, GForces, GMeter, ImuSample},
     speedometer::{Speedometer, SpeedometerSnapshot},
     timing::Reference,
     track::{Correlator, LiveSessionSnapshot, Session, Track, Waypoint, trace::Trace},
@@ -17,6 +18,21 @@ use crate::{
 /// A stateful accumulator fed one fix at a time; publishes its own snapshot.
 pub trait FixConsumer {
     fn on_fix(&mut self, fix: GPSFix);
+    /// An accelerometer sample; most consumers only want fixes.
+    fn on_sample(&mut self, _sample: ImuSample) {}
+}
+
+/// What a recording listens to.
+pub struct Sources {
+    pub fixes: BoxStream<'static, Result<GPSFix, GpsError>>,
+    /// The accelerometer, if there is one.
+    pub imu: Option<BoxStream<'static, ImuSample>>,
+}
+
+impl From<BoxStream<'static, Result<GPSFix, GpsError>>> for Sources {
+    fn from(fixes: BoxStream<'static, Result<GPSFix, GpsError>>) -> Self {
+        Self { fixes, imu: None }
+    }
 }
 
 /// Sole owner of one recording's fix stream; forwards each fix to its consumers.
@@ -25,17 +41,19 @@ pub struct Recorder {
     speedometer: Speedometer,
     correlator: Option<Correlator>,
     trace: Option<Trace>,
+    g_meter: Option<GMeter>,
     /// Sees each fix too, e.g. to save it as it arrives.
     journal: Option<Box<dyn FixConsumer + Send>>,
     started_at: DateTime<Utc>,
     fixes: Vec<GPSFix>,
+    samples: Vec<ImuSample>,
 }
 
 impl Recorder {
     /// Spawns the recording on the current tokio runtime. With a `track`, it's also timed,
     /// against `reference` if there is one. With `trace`, its path is traced to author a track from.
     pub fn start(
-        fixes: BoxStream<'static, Result<GPSFix, GpsError>>,
+        sources: impl Into<Sources>,
         track: Option<Arc<Track>>,
         reference: Option<Reference>,
         trace: bool,
@@ -45,6 +63,8 @@ impl Recorder {
         let (speedometer, speed_rx) = Speedometer::new();
         let (correlator, session) = track.map(|t| Correlator::new(t, reference)).unzip();
         let (trace, trace_rx) = trace.then(Trace::new).unzip();
+        let sources = sources.into();
+        let (g_meter, g_rx) = sources.imu.is_some().then(GMeter::new).unzip();
         let (fix, fix_rx) = watch::channel(None);
         let (stop, stop_rx) = oneshot::channel();
         Recording {
@@ -52,6 +72,7 @@ impl Recorder {
             speedometer: speed_rx,
             session,
             trace: trace_rx,
+            g: g_rx,
             stop,
             task: tokio::spawn(
                 Self {
@@ -59,24 +80,37 @@ impl Recorder {
                     speedometer,
                     correlator,
                     trace,
+                    g_meter,
                     journal,
                     started_at,
                     fixes: Vec::new(),
+                    samples: Vec::new(),
                 }
-                .run(fixes, stop_rx),
+                .run(sources, stop_rx),
             ),
         }
     }
 
     async fn run(
         mut self,
-        mut fixes: BoxStream<'static, Result<GPSFix, GpsError>>,
+        Sources { mut fixes, imu }: Sources,
         mut stop: oneshot::Receiver<()>,
     ) -> RecordingSummary {
+        // Fused: it may end before the fixes do.
+        let mut imu = stream::iter(imu).flatten().fuse();
         loop {
             tokio::select! {
                 // Fires on `stop()` and when the `Recording` is dropped.
                 _ = &mut stop => break,
+                Some(sample) = imu.next() => {
+                    self.samples.push(sample);
+                    if let Some(g) = &mut self.g_meter {
+                        g.on_sample(sample);
+                    }
+                    if let Some(j) = &mut self.journal {
+                        j.on_sample(sample);
+                    }
+                }
                 item = fixes.next() => match item {
                     Some(Ok(fix)) => {
                         self.fix.send_replace(Some(fix));
@@ -88,6 +122,9 @@ impl Recorder {
                         if let Some(t) = &mut self.trace {
                             t.on_fix(fix);
                         }
+                        if let Some(g) = &mut self.g_meter {
+                            g.on_fix(fix);
+                        }
                         if let Some(j) = &mut self.journal {
                             j.on_fix(fix);
                         }
@@ -97,10 +134,13 @@ impl Recorder {
                 },
             }
         }
+        let session = self.correlator.map(Correlator::into_session);
         RecordingSummary {
             started_at: self.started_at,
             fixes: self.fixes,
-            session: self.correlator.map(Correlator::into_session),
+            g: self.g_meter.map(|g| g.into_forces(session.as_ref())),
+            samples: self.samples,
+            session,
             trace: self.trace.map(Trace::into_waypoints),
             speedometer: self.speedometer.snapshot(),
         }
@@ -116,6 +156,8 @@ pub struct Recording {
     pub session: Option<watch::Receiver<LiveSessionSnapshot>>,
     /// The simplified path so far; `None` unless tracing.
     pub trace: Option<watch::Receiver<Arc<[Waypoint]>>>,
+    /// `None` without an accelerometer.
+    pub g: Option<watch::Receiver<GForceSnapshot>>,
     stop: oneshot::Sender<()>,
     task: JoinHandle<RecordingSummary>,
 }
@@ -137,25 +179,49 @@ pub struct RecordingSummary {
     pub trace: Option<Vec<Waypoint>>,
     /// Every fix received, in order: enough to replay or re-time the recording later.
     pub fixes: Vec<GPSFix>,
+    /// `None` without an accelerometer.
+    pub g: Option<GForces>,
+    /// Every accelerometer sample received, in order.
+    pub samples: Vec<ImuSample>,
 }
 
 impl RecordingSummary {
-    /// Re-derives a recording from its fixes, as if they had just come in live.
-    pub fn replay(started_at: DateTime<Utc>, fixes: Vec<GPSFix>, track: Option<Arc<Track>>) -> Self {
+    /// Re-derives a recording from its fixes and samples, as if they had just come in live
+    /// (in time order, so g-forces may differ a hair from live, where they arrive in batches).
+    pub fn replay(
+        started_at: DateTime<Utc>,
+        fixes: Vec<GPSFix>,
+        samples: Vec<ImuSample>,
+        track: Option<Arc<Track>>,
+    ) -> Self {
         let (mut speedometer, _) = Speedometer::new();
         let mut correlator = track.map(|t| Correlator::new(t, None).0);
+        let mut g_meter = (!samples.is_empty()).then(|| GMeter::new().0);
+        let mut pending = samples.iter().peekable();
         for &fix in &fixes {
+            if let Some(g) = &mut g_meter {
+                while let Some(&s) = pending.next_if(|s| s.timestamp <= fix.timestamp) {
+                    g.on_sample(s);
+                }
+                g.on_fix(fix);
+            }
             speedometer.on_fix(fix);
             if let Some(c) = &mut correlator {
                 c.on_fix(fix);
             }
         }
+        if let Some(g) = &mut g_meter {
+            pending.for_each(|&s| g.on_sample(s));
+        }
+        let session = correlator.map(Correlator::into_session);
         Self {
             started_at,
-            session: correlator.map(Correlator::into_session),
+            g: g_meter.map(|g| g.into_forces(session.as_ref())),
+            session,
             speedometer: speedometer.snapshot(),
             trace: None,
             fixes,
+            samples,
         }
     }
 }
@@ -239,7 +305,7 @@ mod tests {
         assert_eq!(*journal.lock().unwrap(), fixes);
         assert!(matches!(&live.session.as_ref().unwrap().completed, Completed::Laps(l) if l.len() == 2));
         let journaled = journal.lock().unwrap().clone();
-        assert_eq!(RecordingSummary::replay(live.started_at, journaled, Some(track)), live);
+        assert_eq!(RecordingSummary::replay(live.started_at, journaled, Vec::new(), Some(track)), live);
     }
 
     #[tokio::test]

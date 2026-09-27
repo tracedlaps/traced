@@ -24,9 +24,12 @@ pub fn Live() -> Element {
 
     rsx! {
         main { class: "live",
-            div { class: "speed",
-                span { "{kmh(speed.current_speed_ms)}" }
-                small { "km/h" }
+            div { class: "speed-row",
+                div { class: "speed",
+                    span { "{kmh(speed.current_speed_ms)}" }
+                    small { "km/h" }
+                }
+                GDial {}
             }
             dl { class: "stats",
                 dt { {t!("stat-top")} } dd { "{kmh(speed.top_speed_ms)} km/h" }
@@ -86,6 +89,49 @@ pub fn Live() -> Element {
                     navigator().push(Route::Results {});
                 },
                 {t!("stop")}
+            }
+        }
+    }
+}
+
+/// The felt g-force: a ball in a bowl, rolling opposite the acceleration (braking rolls it up,
+/// a left turn right), on rings every 0.5 g. Reads the signal itself, so only the dial re-renders.
+#[component]
+fn GDial() -> Element {
+    const MAX: f32 = 1.5;
+    let Some(g) = *use_context::<RecorderCtx>().g.read() else {
+        return rsx! {};
+    };
+    // Screen coordinates, y down, held inside the outer ring.
+    let at = |x: f32, y: f32| {
+        let k = x.hypot(y).max(MAX) / MAX;
+        (x / k, y / k)
+    };
+    let (x, y) = at(-g.lateral_g, g.longitudinal_g);
+    let p = g.peaks;
+    let peaks = [(0.0, -p.braking), (0.0, p.accelerating), (p.left, 0.0), (-p.right, 0.0)]
+        .into_iter()
+        .filter(|&(x, y)| x.hypot(y) > 0.05)
+        .map(|(x, y)| at(x, y));
+    rsx! {
+        div { class: if g.aligned { "g-dial" } else { "g-dial calibrating" },
+            svg { view_box: "-1.6 -1.6 3.2 3.2",
+                for r in [0.5, 1.0, 1.5] {
+                    circle { class: "ring", r }
+                }
+                line { class: "ring", x1: -MAX, x2: MAX }
+                line { class: "ring", y1: -MAX, y2: MAX }
+                for (cx, cy) in peaks {
+                    circle { class: "peak", cx, cy, r: 0.06 }
+                }
+                circle { class: "ball", r: 0.16, style: "transform: translate({x}px, {y}px)" }
+            }
+            small {
+                if g.aligned {
+                    "{g.lateral_g.hypot(g.longitudinal_g):.2} g"
+                } else {
+                    {t!("g-calibrating")}
+                }
             }
         }
     }

@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::{
     gps::GPSFix,
+    imu::{GForces, ImuSample},
     recorder::RecordingSummary,
     speedometer::SpeedometerSnapshot,
     timing::{Reference, best_lap},
@@ -58,6 +59,15 @@ const MIGRATIONS: &[&str] = &[
     ALTER TABLE recordings ADD COLUMN interrupted INTEGER NOT NULL DEFAULT 0; -- recovered after the app died
     UPDATE recordings SET ended_at =
         COALESCE((SELECT max(time_ms) FROM fixes WHERE recording_id = recordings.id), started_at);",
+    // Accelerometer samples, saved as they come in like fixes (m/s², device axes).
+    "CREATE TABLE imu_samples (
+        recording_id TEXT NOT NULL REFERENCES recordings (id) ON DELETE CASCADE,
+        time_ms INTEGER NOT NULL,
+        ax REAL NOT NULL, ay REAL NOT NULL, az REAL NOT NULL,
+        gx REAL NOT NULL, gy REAL NOT NULL, gz REAL NOT NULL
+    ) STRICT;
+    CREATE INDEX imu_samples_by_recording ON imu_samples (recording_id, time_ms);
+    ALTER TABLE recordings ADD COLUMN g TEXT; -- JSON `GForces`, with an accelerometer",
 ];
 
 pub struct Store {
@@ -71,6 +81,8 @@ pub struct SavedRecording {
     pub started_at: DateTime<Utc>,
     pub session: Option<Session>,
     pub speedometer: SpeedometerSnapshot,
+    /// `None` without an accelerometer.
+    pub g: Option<GForces>,
     /// Recovered from its saved fixes after the app died mid-recording.
     pub interrupted: bool,
 }
@@ -168,15 +180,19 @@ impl Store {
             })?
             .collect::<Result<Vec<_>, _>>()?;
         for (id, started_at) in recordings {
+            let uuid = Uuid::parse_str(&id)?;
             let summary = RecordingSummary::replay(
                 DateTime::from_timestamp_millis(started_at).unwrap_or_default(),
-                self.fixes(Uuid::parse_str(&id)?)?,
+                self.fixes(uuid)?,
+                self.samples(uuid)?,
                 Some(track.clone()),
             );
             let completed = summary.session.map(|s| serde_json::to_string(&s.completed));
+            // Lap peaks follow the laps.
+            let g = summary.g.map(|g| serde_json::to_string(&g));
             self.db.execute(
-                "UPDATE recordings SET completed = ?2 WHERE id = ?1",
-                params![id, completed.transpose()?],
+                "UPDATE recordings SET completed = ?2, g = ?3 WHERE id = ?1",
+                params![id, completed.transpose()?, g.transpose()?],
             )?;
         }
         Ok(())
@@ -248,6 +264,15 @@ impl Store {
         Ok(())
     }
 
+    pub fn append_sample(&self, recording: Uuid, s: &ImuSample) -> Result<(), StoreError> {
+        let ([ax, ay, az], [gx, gy, gz]) = (s.accel, s.gravity);
+        self.db.execute(
+            "INSERT INTO imu_samples VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![recording.to_string(), s.timestamp.timestamp_millis(), ax, ay, az, gx, gy, gz],
+        )?;
+        Ok(())
+    }
+
     /// Stores how recording `id` went, or drops it if it never got a fix.
     pub fn finish_recording(
         &self,
@@ -261,7 +286,7 @@ impl Store {
             return Ok(());
         };
         self.db.execute(
-            "UPDATE recordings SET completed = ?2, speedometer = ?3, ended_at = ?4, interrupted = ?5
+            "UPDATE recordings SET completed = ?2, speedometer = ?3, ended_at = ?4, interrupted = ?5, g = ?6
             WHERE id = ?1",
             params![
                 id.to_string(),
@@ -272,6 +297,7 @@ impl Store {
                 serde_json::to_string(&r.speedometer)?,
                 last.timestamp.timestamp_millis(),
                 interrupted,
+                r.g.as_ref().map(serde_json::to_string).transpose()?,
             ],
         )?;
         Ok(())
@@ -300,6 +326,7 @@ impl Store {
             let summary = RecordingSummary::replay(
                 DateTime::from_timestamp_millis(started_at).unwrap_or_default(),
                 self.fixes(id)?,
+                self.samples(id)?,
                 track.cloned(),
             );
             self.finish_recording(id, &summary, true)?;
@@ -310,7 +337,7 @@ impl Store {
     /// Every recording, newest first, without its fixes.
     pub fn recordings(&self) -> Result<Vec<SavedRecording>, StoreError> {
         let mut stmt = self.db.prepare(
-            "SELECT id, started_at, track_id, completed, speedometer, interrupted FROM recordings
+            "SELECT id, started_at, track_id, completed, speedometer, interrupted, g FROM recordings
             WHERE ended_at IS NOT NULL ORDER BY started_at DESC",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -321,10 +348,11 @@ impl Store {
                 r.get::<_, Option<String>>(3)?,
                 r.get::<_, String>(4)?,
                 r.get::<_, bool>(5)?,
+                r.get::<_, Option<String>>(6)?,
             ))
         })?;
         rows.map(|row| {
-            let (id, started_at, track_id, completed, speedometer, interrupted) = row?;
+            let (id, started_at, track_id, completed, speedometer, interrupted, g) = row?;
             let session = match (track_id, completed) {
                 (Some(track_id), Some(completed)) => Some(Session {
                     track_id: Uuid::parse_str(&track_id)?,
@@ -337,6 +365,7 @@ impl Store {
                 started_at: DateTime::from_timestamp_millis(started_at).unwrap_or_default(),
                 session,
                 speedometer: serde_json::from_str(&speedometer)?,
+                g: g.map(|g| serde_json::from_str(&g)).transpose()?,
                 interrupted,
             })
         })
@@ -348,6 +377,21 @@ impl Store {
         let recordings = self.recordings()?;
         let Some((id, lap)) = best_lap(&recordings, track.uuid) else { return Ok(None) };
         Ok(Some(Reference::new(track, lap.clone(), &self.fixes(id)?)))
+    }
+
+    /// A recording's accelerometer samples, in order.
+    pub fn samples(&self, recording: Uuid) -> Result<Vec<ImuSample>, StoreError> {
+        let mut stmt = self.db.prepare(
+            "SELECT time_ms, ax, ay, az, gx, gy, gz FROM imu_samples WHERE recording_id = ?1 ORDER BY time_ms, rowid",
+        )?;
+        let samples = stmt.query_map([recording.to_string()], |r| {
+            Ok(ImuSample {
+                timestamp: DateTime::from_timestamp_millis(r.get(0)?).unwrap_or_default(),
+                accel: [r.get(1)?, r.get(2)?, r.get(3)?],
+                gravity: [r.get(4)?, r.get(5)?, r.get(6)?],
+            })
+        })?;
+        Ok(samples.collect::<Result<_, _>>()?)
     }
 
     /// A recording's fixes, in order.
@@ -379,6 +423,7 @@ impl Store {
 mod tests {
     use super::*;
     use crate::{
+        imu::GPeaks,
         speedometer::tests::fix,
         track::{Completed, Lap, TrackShape, Waypoint},
     };
@@ -447,7 +492,7 @@ mod tests {
             .collect();
         let at = fixes[0].timestamp;
         let built = Arc::new(spec.clone().build().unwrap());
-        save(&store, &RecordingSummary::replay(at, fixes.clone(), Some(built)));
+        save(&store, &RecordingSummary::replay(at, fixes.clone(), Vec::new(), Some(built)));
         let session = || store.recordings().unwrap()[0].session.clone().unwrap();
         let before = session();
         assert!(matches!(before.completed, Completed::Run(Some(_))), "{before:?}");
@@ -457,7 +502,7 @@ mod tests {
 
         let moved = open("Renamed", w[1]).with_uuid(spec.uuid());
         store.put_track(&moved).unwrap();
-        let replayed = RecordingSummary::replay(at, fixes, Some(Arc::new(moved.build().unwrap())));
+        let replayed = RecordingSummary::replay(at, fixes, Vec::new(), Some(Arc::new(moved.build().unwrap())));
         assert_ne!(session(), before);
         assert_eq!(Some(session()), replayed.session);
         assert_eq!(store.track(spec.uuid()).unwrap().unwrap().name(), "Renamed");
@@ -505,8 +550,11 @@ mod tests {
                 ..fix(secs + 1, 2.0)
             },
         ];
+        let sample = |s, x| ImuSample { timestamp: at(s), accel: [x, 0.5, 0.0], gravity: [0.0, 0.0, 9.8] };
         RecordingSummary {
             started_at: at(secs),
+            g: Some(GForces { peaks: GPeaks { braking: 0.75, ..Default::default() }, laps: vec![GPeaks::default()] }),
+            samples: vec![sample(secs, 1.0), sample(secs + 1, -2.0)],
             session,
             speedometer,
             trace: None,
@@ -520,6 +568,7 @@ mod tests {
             .begin_recording(r.started_at, r.session.as_ref().map(|s| s.track_id))
             .unwrap();
         r.fixes.iter().for_each(|f| store.append_fix(id, f).unwrap());
+        r.samples.iter().for_each(|s| store.append_sample(id, s).unwrap());
         store.finish_recording(id, r, false).unwrap();
         id
     }
@@ -535,7 +584,7 @@ mod tests {
         // Two laps each, at 8 m/s then 10 m/s: 50 s and 40 s laps.
         for speed in [8.0, 10.0] {
             let fixes = (0..90).map(|i| fix(around(25.0 + 10.0 * i as f64), (25.0 + 10.0 * i as f64) / speed)).collect();
-            save(&store, &RecordingSummary::replay(Utc::now(), fixes, Some(track.clone())));
+            save(&store, &RecordingSummary::replay(Utc::now(), fixes, Vec::new(), Some(track.clone())));
         }
         let r = store.reference(&track).unwrap().unwrap();
         assert_eq!(r.lap.duration(), TimeDelta::seconds(40));
@@ -559,10 +608,12 @@ mod tests {
             started_at: timed.started_at,
             session: timed.session,
             speedometer: timed.speedometer,
+            g: timed.g,
             interrupted: false,
         };
         assert_eq!(saved[1], expected);
         assert_eq!(store.fixes(timed_id).unwrap(), timed.fixes);
+        assert_eq!(store.samples(timed_id).unwrap(), timed.samples);
     }
 
     #[test]
@@ -573,17 +624,19 @@ mod tests {
         let cut = summary(None, 100);
         let id = store.begin_recording(cut.started_at, Some(spec.uuid())).unwrap();
         cut.fixes.iter().for_each(|f| store.append_fix(id, f).unwrap());
+        cut.samples.iter().for_each(|s| store.append_sample(id, s).unwrap());
         store.begin_recording(cut.started_at, None).unwrap(); // died before any fix
         assert!(store.recordings().unwrap().is_empty());
 
         store.recover().unwrap();
         let replayed =
-            RecordingSummary::replay(cut.started_at, cut.fixes.clone(), Some(Arc::new(spec.build().unwrap())));
+            RecordingSummary::replay(cut.started_at, cut.fixes.clone(), cut.samples.clone(), Some(Arc::new(spec.build().unwrap())));
         let expected = SavedRecording {
             id,
             started_at: cut.started_at,
             session: replayed.session,
             speedometer: replayed.speedometer,
+            g: replayed.g,
             interrupted: true,
         };
         assert_eq!(store.recordings().unwrap(), [expected]);

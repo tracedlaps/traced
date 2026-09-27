@@ -61,7 +61,7 @@ pub fn SavedResults(id: Uuid) -> Element {
                 small { class: "interrupted", {t!("interrupted-detail")} }
             }
             div { class: "scroll",
-                Report { speed: r.speedometer, session: r.session }
+                Report { speed: r.speedometer, session: r.session, g: r.g }
             }
         }
     }

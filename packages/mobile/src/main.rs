@@ -10,6 +10,7 @@ use views::{
 mod android;
 mod gps;
 mod i18n;
+mod imu;
 mod recorder;
 mod storage;
 mod tracks;

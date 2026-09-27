@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use traced_core::{speedometer::SpeedometerSnapshot, timing::best_lap, track::Session};
+use traced_core::{imu::GForces, speedometer::SpeedometerSnapshot, timing::best_lap, track::Session};
 
 use super::{kmh, lap_time, Delta};
 use crate::{recorder::RecorderCtx, storage};
@@ -21,7 +21,7 @@ pub fn Results() -> Element {
         main {
             h1 { {t!("results")} }
             div { class: "scroll",
-                Report { speed: summary.speedometer, session: summary.session.clone() }
+                Report { speed: summary.speedometer, session: summary.session.clone(), g: summary.g.clone() }
             }
         }
     }
@@ -29,7 +29,7 @@ pub fn Results() -> Element {
 
 /// A finished recording's stats and laps, live or saved.
 #[component]
-pub fn Report(speed: SpeedometerSnapshot, session: Option<Session>) -> Element {
+pub fn Report(speed: SpeedometerSnapshot, session: Option<Session>, g: Option<GForces>) -> Element {
     let laps = session.as_ref().map_or(&[][..], Session::laps);
     let recordings = storage::recordings();
     let best = session.as_ref().and_then(|s| best_lap(&recordings, s.track_id)).map(|(_, lap)| lap);
@@ -39,6 +39,11 @@ pub fn Report(speed: SpeedometerSnapshot, session: Option<Session>) -> Element {
             dt { {t!("stat-avg")} } dd { "{kmh(speed.average_speed_ms)} km/h" }
             dt { {t!("stat-distance")} } dd { "{speed.distance_m / 1000.0:.2} km" }
             dt { {t!("stat-time")} } dd { {lap_time(speed.elapsed.as_secs_f64())} }
+            if let Some(p) = g.as_ref().map(|g| g.peaks) {
+                dt { {t!("g-braking")} } dd { "{p.braking:.2} g" }
+                dt { {t!("g-accelerating")} } dd { "{p.accelerating:.2} g" }
+                dt { {t!("g-lateral")} } dd { "{p.left:.2} g · {p.right:.2} g" }
+            }
         }
         if session.is_some() && laps.is_empty() {
             p { {t!("no-completed-laps")} }
@@ -48,7 +53,10 @@ pub fn Report(speed: SpeedometerSnapshot, session: Option<Session>) -> Element {
         }
         if !laps.is_empty() {
             table { class: "laps",
-                tr { th { "#" } th { {t!("stat-time")} } th { {t!("pb")} } th { {t!("splits")} } }
+                tr {
+                    th { "#" } th { {t!("stat-time")} } th { {t!("pb")} } th { {t!("splits")} }
+                    if g.is_some() { th { {t!("g-lap")} } }
+                }
                 for (i, lap) in laps.iter().enumerate() {
                     tr {
                         td { "{i + 1}" }
@@ -64,6 +72,9 @@ pub fn Report(speed: SpeedometerSnapshot, session: Option<Session>) -> Element {
                             }
                         }
                         td { {lap.splits().map(|s| lap_time(s.as_seconds_f64())).collect::<Vec<_>>().join(" · ")} }
+                        if let Some(p) = g.as_ref().and_then(|g| g.laps.get(i)) {
+                            td { "{p.braking:.1} · {p.left.max(p.right):.1}" }
+                        }
                     }
                 }
             }

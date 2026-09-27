@@ -64,6 +64,7 @@ last-lap = Last lap { $time }
 best = Best { $time }
 delta = Delta
 gps-ended = GPS stream ended. Stop to see the results.
+g-calibrating = Calibrating…
 
 ## Results and history
 results = Results
@@ -71,6 +72,10 @@ recording-in-progress = Recording in progress.
 personal-best = Personal best on this track
 splits = Splits
 gps-gap = GPS dropout during this lap
+g-braking = Max braking
+g-accelerating = Max acceleration
+g-lateral = Max lateral (L · R)
+g-lap = Brake · Lat g
 history = History
 no-recordings = No recordings yet.
 recording-not-found = Recording not found.

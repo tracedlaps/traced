@@ -64,6 +64,7 @@ last-lap = Última volta { $time }
 best = Melhor { $time }
 delta = Delta
 gps-ended = O sinal GPS terminou. Pare para ver os resultados.
+g-calibrating = A calibrar…
 
 ## Results and history
 results = Resultados
@@ -71,6 +72,10 @@ recording-in-progress = Gravação em curso.
 personal-best = Recorde pessoal nesta pista
 splits = Parciais
 gps-gap = Falha de GPS nesta volta
+g-braking = Travagem máx.
+g-accelerating = Aceleração máx.
+g-lateral = Lateral máx. (E · D)
+g-lap = Trav. · Lat. g
 history = Histórico
 no-recordings = Ainda não há gravações.
 recording-not-found = Gravação não encontrada.

@@ -10,7 +10,8 @@ use traced_core::{
         mock::{MockGPSConfig, MockGPSProvider},
         GPSFix, GpsError, GpsProvider, GpsStatus,
     },
-    recorder::{Recorder, Recording, RecordingSummary},
+    imu::{GForceSnapshot, ImuSample},
+    recorder::{Recorder, Recording, RecordingSummary, Sources},
     speedometer::SpeedometerSnapshot,
     track::{LiveSessionSnapshot, Track, Waypoint},
 };
@@ -23,7 +24,7 @@ use crate::{
     tracks::{mock_speed_kmh, PRESETS},
 };
 #[cfg(target_os = "android")]
-use {crate::gps::android::AndroidGpsProvider, dioxus::logger::tracing::warn};
+use {crate::{gps::android::AndroidGpsProvider, imu::AndroidImu}, dioxus::logger::tracing::warn};
 
 type Fixes = BoxStream<'static, Result<GPSFix, GpsError>>;
 
@@ -42,6 +43,8 @@ pub struct RecorderCtx {
     pub track: Signal<Option<Arc<Track>>>,
     pub fix: Signal<Option<GPSFix>>,
     pub speed: Signal<Option<SpeedometerSnapshot>>,
+    /// `None` without an accelerometer.
+    pub g: Signal<Option<GForceSnapshot>>,
     pub live: Signal<Option<LiveSessionSnapshot>>,
     /// The device GPS, or the mock drive's while it runs.
     pub status: Signal<Option<GpsStatus>>,
@@ -53,6 +56,9 @@ pub struct RecorderCtx {
     /// App-lifetime device GPS (leaked once at startup); `None` if the plugin failed to load.
     #[cfg(target_os = "android")]
     device: Option<&'static AndroidGpsProvider>,
+    /// App-lifetime accelerometer; `None` if its plugin failed to load.
+    #[cfg(target_os = "android")]
+    imu: Option<&'static AndroidImu>,
 }
 
 impl RecorderCtx {
@@ -83,6 +89,7 @@ impl RecorderCtx {
             track: Signal::new_in_scope(None, ScopeId::ROOT),
             fix: Signal::new_in_scope(None, ScopeId::ROOT),
             speed: Signal::new_in_scope(None, ScopeId::ROOT),
+            g: Signal::new_in_scope(None, ScopeId::ROOT),
             live: Signal::new_in_scope(None, ScopeId::ROOT),
             status: Signal::new_in_scope(None, ScopeId::ROOT),
             permission: Signal::new_in_scope(
@@ -93,6 +100,8 @@ impl RecorderCtx {
             force_location_manager: Signal::new_in_scope(false, ScopeId::ROOT),
             #[cfg(target_os = "android")]
             device: device.map(|(gps, _)| gps),
+            #[cfg(target_os = "android")]
+            imu: AndroidImu::new().map(|imu| &*Box::leak(Box::new(imu))),
         };
         #[cfg(target_os = "android")]
         if let Some(gps) = ctx.device {
@@ -104,14 +113,14 @@ impl RecorderCtx {
     /// Records against `track`, or with none (speedometer only). On the device GPS,
     /// first asks for the location permission if needed; fails if denied or location is off.
     pub async fn start(mut self, track: Option<Arc<Track>>) -> Result<(), GpsError> {
-        let fixes = match self.device_fixes().await? {
-            Some(fixes) => fixes,
-            None => self.mock_fixes(track.clone()),
+        let sources = match self.device_fixes().await? {
+            Some(fixes) => Sources { fixes, imu: self.device_imu() },
+            None => self.mock_sources(track.clone()),
         };
         let reference = track.as_deref().and_then(storage::reference);
         let started_at = Utc::now();
         let (saved, journal) = storage::begin(started_at, track.as_deref()).unzip();
-        let recording = Recorder::start(fixes, track.clone(), reference, false, started_at, journal);
+        let recording = Recorder::start(sources, track.clone(), reference, false, started_at, journal);
         self.show(&recording);
         if let Some(live) = recording.session.clone() {
             bridge(live, self.live, Some);
@@ -127,11 +136,11 @@ impl RecorderCtx {
     /// Traces a drive or walk to make a track from, on the device GPS (asking for the location
     /// permission if needed) or the mock driving the first preset.
     pub async fn capture(mut self) -> Result<(), GpsError> {
-        let fixes = match self.device_fixes().await? {
-            Some(fixes) => fixes,
-            None => self.mock_fixes(None),
+        let sources = match self.device_fixes().await? {
+            Some(fixes) => fixes.into(),
+            None => self.mock_sources(None),
         };
-        let capture = Recorder::start(fixes, None, None, true, Utc::now(), None);
+        let capture = Recorder::start(sources, None, None, true, Utc::now(), None);
         self.show(&capture);
         bridge(capture.trace.clone().expect("tracing"), self.trace, Some);
         self.capture.set(Some(capture));
@@ -167,10 +176,13 @@ impl RecorderCtx {
     fn show(self, recording: &Recording) {
         bridge(recording.fix.clone(), self.fix, identity);
         bridge(recording.speedometer.clone(), self.speed, Some);
+        if let Some(g) = recording.g.clone() {
+            bridge(g, self.g, Some);
+        }
     }
 
-    /// Drives the chosen track (or the first preset) on the mock GPS.
-    fn mock_fixes(self, track: Option<Arc<Track>>) -> Fixes {
+    /// Drives the chosen track (or the first preset) on the mock GPS and accelerometer.
+    fn mock_sources(self, track: Option<Arc<Track>>) -> Sources {
         let driven = track
             .unwrap_or_else(|| Arc::new(PRESETS[0].track.clone().build().expect("valid preset")));
         let mut gps = MockGPSProvider::drive(
@@ -184,7 +196,7 @@ impl RecorderCtx {
         );
         let _ = gps.init();
         bridge(gps.status(), self.status, Some);
-        gps.stream_fixes()
+        Sources { fixes: gps.stream_fixes(), imu: Some(gps.imu()) }
     }
 
     /// Where the phone is: the recording's (or capture's) latest fix, or the device GPS's first, if one comes soon.
@@ -220,6 +232,14 @@ impl RecorderCtx {
     #[cfg(not(target_os = "android"))]
     async fn device_fixes(self) -> Result<Option<Fixes>, GpsError> {
         Ok(None)
+    }
+
+    /// The device accelerometer's samples, if it has one.
+    fn device_imu(self) -> Option<BoxStream<'static, ImuSample>> {
+        #[cfg(target_os = "android")]
+        return self.imu.map(|imu| imu.stream());
+        #[cfg(not(target_os = "android"))]
+        None
     }
 
     fn keep_screen_on(self, _on: bool) {

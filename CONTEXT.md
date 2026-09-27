@@ -19,16 +19,30 @@ Created per recording: takes a `GpsProvider`'s fix stream (the app keeps the pro
 The handle returned by `Recorder::start` for one recording: typed `watch` receivers for the latest raw `GPSFix` and each consumer's snapshot, plus `stop(self) -> RecordingSummary`. Dropping it stops the recording.
 
 **RecordingSummary**:
-What a finished recording hands back: its wall-clock start, the completed `Session` (if a track was armed), the final `SpeedometerSnapshot`, and every raw `GPSFix` received (kept so a recording can be replayed or re-timed later: `RecordingSummary::replay` re-derives the rest from the fixes alone).
+What a finished recording hands back: its wall-clock start, the completed `Session` (if a track was armed), the final `SpeedometerSnapshot`, its `GForces` (with an accelerometer), and every raw `GPSFix` and `ImuSample` received (kept so a recording can be replayed or re-timed later: `RecordingSummary::replay` re-derives the rest from them alone).
 
 **FixConsumer**:
 Trait for anything that reacts to a live fix stream (`Track::Correlator`, `Speedometer`). Stateful accumulator fed one fix at a time; publishes its snapshot on a `watch` channel after each fix (latest value only, pushed on change).
 _Avoid_: Subscriber, listener (implies pub/sub — this is direct dispatch from one owner, not a broadcast channel).
 
+### Accelerometer
+
+**ImuSample**:
+One accelerometer reading in the phone's own axes (m/s²): acceleration with gravity removed, plus gravity itself (pointing up). Timestamped on the same clock as fixes. Fed to a `Recorder` alongside its fixes (`Sources`), when the phone has an accelerometer.
+
+**GMeter**:
+`FixConsumer` turning samples into the vehicle's g-forces, lateral (right positive) and longitudinal (speeding up positive), whatever way the phone is mounted. Publishes a `GForceSnapshot` (smoothed, at most 20 Hz) with running peaks, and hands back `GForces` (peaks overall and per lap) at the end.
+
+**Forward alignment**:
+How the `GMeter` finds the vehicle's forward axis in device axes, with no calibration step: gravity gives down, and each sharp GPS speed change says the horizontal acceleration felt meanwhile is along the travel direction. Keeps adapting, so a mount that shifts (or a handlebar that steers) re-aligns. Until three such changes, the snapshot is unaligned and reads zero.
+
+**Felt force**:
+How the g-dial shows g-forces: a ball in a bowl, rolling opposite the acceleration. Braking rolls it up (forward), a left turn rolls it right.
+
 ### Storage
 
 **Store**:
-The one local SQLite database (`traced_core::store`). Holds tracks as their `TrackBuilder` inputs (JSON, rebuilt on load) and recordings with their fixes. A recording's row is created when it starts and its fixes are saved as they arrive; it's finished (session, speedometer, `ended_at`) on stop. One left unfinished by a crash is finished on the next launch by replaying its fixes (`Store::recover`) and marked interrupted. Schema changes are an append-only migration list keyed on SQLite's `user_version`.
+The one local SQLite database (`traced_core::store`). Holds tracks as their `TrackBuilder` inputs (JSON, rebuilt on load) and recordings with their fixes and accelerometer samples. A recording's row is created when it starts and its fixes and samples are saved as they arrive; it's finished (session, speedometer, g-forces, `ended_at`) on stop. One left unfinished by a crash is finished on the next launch by replaying its fixes (`Store::recover`) and marked interrupted. Schema changes are an append-only migration list keyed on SQLite's `user_version`.
 
 **SavedRecording**:
 A finished stored `RecordingSummary` without its fixes, which load separately (`Store::fixes`), plus whether it was interrupted. Deleting a `Track` deletes its saved recordings.
