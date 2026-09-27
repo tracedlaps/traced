@@ -43,10 +43,34 @@ impl Track {
         Euclidean.length(&self.polyline)
     }
 
+    /// Start to finish gate (m); a full lap on a Closed track.
+    pub fn lap_length(&self) -> f64 {
+        self.sectors().map(|s| s.length).sum()
+    }
+
     /// The point `distance` metres along the polyline (clamped to its ends), as lat/lon.
     pub fn point_at(&self, distance: f64) -> Waypoint {
         let p = Euclidean.point_at_distance_from_start(&self.polyline, distance);
         self.projection.unproject(p.expect("a built polyline has ≥ 2 points"))
+    }
+
+    /// Distance (m) along the polyline of its point nearest `p` (projected). Searches within
+    /// `LOCATE_WINDOW` of `hint`, the last located distance, wrapping on a Closed loop; if
+    /// nothing there is within `MAX_PLACEMENT_OFFSET` of `p` (e.g. after a dropout), everywhere.
+    pub(crate) fn locate(&self, p: Coord, hint: Option<f64>) -> f64 {
+        let length = self.length();
+        let near = |d: f64, h: f64| match (&self.boundary, (d - h).abs()) {
+            (Boundary::Closed { .. }, gap) => gap.min(length - gap) <= LOCATE_WINDOW,
+            (Boundary::Open { .. }, gap) => gap <= LOCATE_WINDOW,
+        };
+        let search = |hint: Option<f64>| {
+            nearest(snaps(&self.polyline, p).filter(|(_, g)| hint.is_none_or(|h| near(g.distance_along_track, h))))
+        };
+        let (_, gate) = search(hint)
+            .filter(|(offset, _)| *offset <= MAX_PLACEMENT_OFFSET)
+            .or_else(|| search(None))
+            .expect("a built polyline has ≥ 2 points");
+        gate.distance_along_track
     }
 
     /// Start gate, sector gates in travel order, then finish gate.
@@ -225,40 +249,17 @@ const DENSIFY_SPACING: f64 = 2.0;
 /// Max distance (m) a placement may sit from the polyline and still snap onto it.
 const MAX_PLACEMENT_OFFSET: f64 = 30.0;
 const GATE_HALF_WIDTH: f64 = 15.0;
+/// How far (m) along the track from its last position `Track::locate` looks first.
+const LOCATE_WINDOW: f64 = 50.0;
 /// Slack (m) past an open end before a placement counts as beyond it; absorbs float noise.
 const END_TOLERANCE: f64 = 1e-6;
 
-/// Snaps `at` (already projected) onto the nearest polyline segment and builds a
-/// `Gate` there, accumulating segment lengths along the way for `distance_along_track`.
+/// Snaps `at` (already projected) onto the nearest polyline segment and builds a `Gate` there.
 fn place_gate(polyline: &Polyline, at: Point) -> Result<Gate, TrackBuildError> {
     let p = at.0;
-    let mut travelled = 0.0;
-    let mut best: Option<(f64, Gate)> = None;
-    for seg in polyline.lines() {
-        let d = seg.delta();
-        let len = d.x.hypot(d.y);
-        if len == 0.0 {
-            continue; // duplicate waypoints: no direction to take
-        }
-        let dir = d / len;
-        let v = p - seg.start;
-        let t = (v.x * dir.x + v.y * dir.y).clamp(0.0, len);
-        let center = seg.start + dir * t;
-        let e = p - center;
-        let offset = e.x.hypot(e.y);
-        if best.as_ref().is_none_or(|(o, _)| offset < *o) {
-            let gate = Gate {
-                center: center.into(),
-                direction: dir,
-                half_width: GATE_HALF_WIDTH,
-                distance_along_track: travelled + t,
-            };
-            best = Some((offset, gate));
-        }
-        travelled += len;
-    }
+    let travelled: f64 = polyline.lines().map(|l| l.delta().x.hypot(l.delta().y)).sum();
     // every segment was zero-length
-    let (offset, gate) = best.ok_or(TrackBuildError::TooFewWaypoints)?;
+    let (offset, gate) = nearest(snaps(polyline, p)).ok_or(TrackBuildError::TooFewWaypoints)?;
 
     // Snapped onto an open end while lying past it: the waypoints don't cover this placement.
     let e = p - gate.center.0;
@@ -272,6 +273,34 @@ fn place_gate(polyline: &Polyline, at: Point) -> Result<Gate, TrackBuildError> {
         return Err(TrackBuildError::PlacementOffTrack { distance: offset });
     }
     Ok(gate)
+}
+
+/// `p` snapped onto each segment, as its offset from `p` and a `Gate` there, accumulating
+/// segment lengths for `distance_along_track`.
+fn snaps(polyline: &Polyline, p: Coord) -> impl Iterator<Item = (f64, Gate)> + '_ {
+    polyline
+        .lines()
+        .scan(0.0, move |travelled, seg| {
+            let d = seg.delta();
+            let len = d.x.hypot(d.y);
+            let start = std::mem::replace(travelled, *travelled + len);
+            // duplicate waypoints: no direction to take
+            Some((len > 0.0).then(|| {
+                let dir = d / len;
+                let v = p - seg.start;
+                let t = (v.x * dir.x + v.y * dir.y).clamp(0.0, len);
+                let center = seg.start + dir * t;
+                let e = p - center;
+                let gate = Gate { center: center.into(), direction: dir, half_width: GATE_HALF_WIDTH, distance_along_track: start + t };
+                (e.x.hypot(e.y), gate)
+            }))
+        })
+        .flatten()
+}
+
+/// The snap with the smallest offset, the first on ties.
+fn nearest(snaps: impl Iterator<Item = (f64, Gate)>) -> Option<(f64, Gate)> {
+    snaps.min_by(|a, b| a.0.total_cmp(&b.0))
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -617,6 +646,46 @@ mod tests {
         let lengths: Vec<f64> = track.sectors().map(|s| s.length).collect();
         assert_eq!(lengths.len(), 1);
         assert!((lengths[0] - 400.0).abs() < 1e-6);
+    }
+
+    fn square() -> Track {
+        Track::builder("Loop", TrackShape::Closed { gate: at(50.0, 0.0) }).waypoints(square_loop()).build().unwrap()
+    }
+
+    fn close_to(d: f64, want: f64) -> bool {
+        (d - want).abs() < 1e-6
+    }
+
+    #[test]
+    fn locate_measures_distance_along_the_polyline() {
+        let t = square();
+        assert!(close_to(t.locate(coord! { x: 30.0, y: -3.0 }, None), 30.0));
+        assert!(close_to(t.locate(coord! { x: 104.0, y: 60.0 }, None), 160.0));
+    }
+
+    #[test]
+    fn locate_follows_the_hint_onto_a_parallel_leg() {
+        // U-turn: out along y = 0, back along y = 10.
+        let open = TrackShape::Open { start: at(10.0, 0.0), finish: at(10.0, 10.0) };
+        let t = Track::builder("U", open)
+            .waypoints([at(0.0, 0.0), at(100.0, 0.0), at(100.0, 10.0), at(0.0, 10.0)])
+            .build()
+            .unwrap();
+        let p = coord! { x: 50.0, y: 4.0 };
+        assert!(close_to(t.locate(p, None), 50.0));
+        assert!(close_to(t.locate(p, Some(155.0)), 160.0));
+    }
+
+    #[test]
+    fn locate_wraps_past_the_seam_of_a_loop() {
+        assert!(close_to(square().locate(coord! { x: 5.0, y: 1.0 }, Some(395.0)), 5.0));
+        assert!(close_to(square().locate(coord! { x: 1.0, y: 5.0 }, Some(5.0)), 395.0));
+    }
+
+    #[test]
+    fn locate_searches_everywhere_when_the_hint_is_stale() {
+        // After a dropout: nothing near the hint lies near the fix.
+        assert!(close_to(square().locate(coord! { x: 100.0, y: 80.0 }, Some(50.0)), 180.0));
     }
 
     #[test]

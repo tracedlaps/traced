@@ -15,6 +15,7 @@ use traced_core::{
     gps::GPSFix,
     recorder::{FixConsumer, RecordingSummary},
     store::{SavedRecording, Store, StoreError},
+    timing::Reference,
     track::{Track, TrackBuilder},
 };
 
@@ -153,6 +154,11 @@ pub fn begin(
 /// Stores how recording `id` went (its fixes are already in), or drops it without any.
 pub fn finish(id: Uuid, summary: &RecordingSummary) {
     with_store("finish recording", |s| s.finish_recording(id, summary, false));
+}
+
+/// The best lap on `track` so far, to race against.
+pub fn reference(track: &Track) -> Option<Reference> {
+    with_store("load best lap", |s| s.reference(track)).flatten()
 }
 
 /// Saved recordings, newest first.

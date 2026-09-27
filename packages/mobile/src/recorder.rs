@@ -102,9 +102,10 @@ impl RecorderCtx {
             Some(fixes) => fixes,
             None => self.mock_fixes(track.clone()),
         };
+        let reference = track.as_deref().and_then(storage::reference);
         let started_at = Utc::now();
         let (saved, journal) = storage::begin(started_at, track.as_deref()).unzip();
-        let recording = Recorder::start(fixes, track.clone(), started_at, journal);
+        let recording = Recorder::start(fixes, track.clone(), reference, started_at, journal);
         bridge(recording.fix.clone(), self.fix, identity);
         bridge(recording.speedometer.clone(), self.speed, Some);
         if let Some(live) = recording.session.clone() {
@@ -144,6 +145,7 @@ impl RecorderCtx {
             mock_speed_kmh(&driven) / 3.6,
             MockGPSConfig {
                 jitter_m: 2.0,
+                pace_jitter: 0.15,
                 ..Default::default()
             },
         );

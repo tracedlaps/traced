@@ -39,6 +39,14 @@ impl Session {
         Self { track_id: track.uuid, completed }
     }
 
+    /// A Closed track's laps, or an Open track's run as a single lap.
+    pub fn laps(&self) -> &[Lap] {
+        match &self.completed {
+            Completed::Laps(laps) => laps,
+            Completed::Run(run) => run.as_slice(),
+        }
+    }
+
     /// Appends a lap (Closed) or sets the run (Open, once only).
     pub(crate) fn record(&mut self, lap: Lap) {
         match &mut self.completed {
@@ -66,6 +74,11 @@ impl Lap {
         self.crossings[self.crossings.len() - 1] - self.crossings[0]
     }
 
+    /// How much slower than `reference` this lap was; negative when faster.
+    pub fn delta(&self, reference: &Lap) -> TimeDelta {
+        self.duration() - reference.duration()
+    }
+
     /// Time spent in each sector, matching `Track::sectors`.
     pub fn splits(&self) -> impl Iterator<Item = TimeDelta> + '_ {
         self.crossings.windows(2).map(|w| w[1] - w[0])
@@ -91,6 +104,7 @@ mod tests {
         let lap = Lap::new(vec![at(0), at(20), at(45), at(60)], false);
         assert_eq!(lap.duration(), TimeDelta::seconds(60));
         assert_eq!(lap.splits().collect::<Vec<_>>(), [20, 25, 15].map(TimeDelta::seconds));
+        assert_eq!(lap.delta(&Lap::new(vec![at(0), at(62)], false)), TimeDelta::seconds(-2));
     }
 
     #[test]

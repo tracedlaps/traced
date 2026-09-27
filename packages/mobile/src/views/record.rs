@@ -1,15 +1,16 @@
 use std::sync::Arc;
 
 use dioxus::prelude::*;
-use traced_core::{gps::GpsError, track::Track};
+use traced_core::{gps::GpsError, timing::best_lap, track::Track};
 
-use super::{gps_status, timed_m};
-use crate::{gps::wire::Permission, recorder::RecorderCtx, Route};
+use super::{gps_status, lap_time, timed_m};
+use crate::{gps::wire::Permission, recorder::RecorderCtx, storage, Route};
 
 #[component]
 pub fn Tracks() -> Element {
     let tracks = use_context::<Signal<Vec<Arc<Track>>>>();
     let mut selected = use_signal(|| 0);
+    let recordings = storage::recordings();
 
     if tracks.read().is_empty() {
         return rsx! {
@@ -30,7 +31,12 @@ pub fn Tracks() -> Element {
                         class: if selected() == i { "selected" },
                         onclick: move |_| selected.set(i),
                         "{track.name}"
-                        small { "{timed_m(track):.0} m · {track.sectors().count()} sectors" }
+                        small {
+                            "{timed_m(track):.0} m · {track.sectors().count()} sectors"
+                            if let Some((_, pb)) = best_lap(&recordings, track.uuid) {
+                                " · PB {lap_time(pb.duration().as_seconds_f64())}"
+                            }
+                        }
                     }
                 }
             }

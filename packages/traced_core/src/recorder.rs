@@ -10,6 +10,7 @@ use tokio::{
 use crate::{
     gps::{GPSFix, GpsError},
     speedometer::{Speedometer, SpeedometerSnapshot},
+    timing::Reference,
     track::{Correlator, LiveSessionSnapshot, Session, Track},
 };
 
@@ -30,15 +31,17 @@ pub struct Recorder {
 }
 
 impl Recorder {
-    /// Spawns the recording on the current tokio runtime. With a `track`, it's also timed.
+    /// Spawns the recording on the current tokio runtime. With a `track`, it's also timed,
+    /// against `reference` if there is one.
     pub fn start(
         fixes: BoxStream<'static, Result<GPSFix, GpsError>>,
         track: Option<Arc<Track>>,
+        reference: Option<Reference>,
         started_at: DateTime<Utc>,
         journal: Option<Box<dyn FixConsumer + Send>>,
     ) -> Recording {
         let (speedometer, speed_rx) = Speedometer::new();
-        let (correlator, session) = track.map(Correlator::new).unzip();
+        let (correlator, session) = track.map(|t| Correlator::new(t, reference)).unzip();
         let (fix, fix_rx) = watch::channel(None);
         let (stop, stop_rx) = oneshot::channel();
         Recording {
@@ -127,7 +130,7 @@ impl RecordingSummary {
     /// Re-derives a recording from its fixes, as if they had just come in live.
     pub fn replay(started_at: DateTime<Utc>, fixes: Vec<GPSFix>, track: Option<Arc<Track>>) -> Self {
         let (mut speedometer, _) = Speedometer::new();
-        let mut correlator = track.map(|t| Correlator::new(t).0);
+        let mut correlator = track.map(|t| Correlator::new(t, None).0);
         for &fix in &fixes {
             speedometer.on_fix(fix);
             if let Some(c) = &mut correlator {
@@ -156,7 +159,7 @@ mod tests {
             Err(GpsError::DeviceNotFound),
             Ok(fix(1, 10.0)),
         ]);
-        let mut rec = Recorder::start(fixes.boxed(), None, Utc::now(), None);
+        let mut rec = Recorder::start(fixes.boxed(), None, None, Utc::now(), None);
         while rec.speedometer.changed().await.is_ok() {} // closes when the stream ends
         let summary = rec.stop().await;
         assert_eq!(summary.speedometer.distance_m, 10.0);
@@ -165,7 +168,7 @@ mod tests {
 
     #[tokio::test]
     async fn stop_ends_endless_stream() {
-        let rec = Recorder::start(stream::pending().boxed(), None, Utc::now(), None);
+        let rec = Recorder::start(stream::pending().boxed(), None, None, Utc::now(), None);
         assert_eq!(rec.stop().await.speedometer, SpeedometerSnapshot::default());
     }
 
@@ -180,7 +183,7 @@ mod tests {
             .waypoints([Waypoint::new(-9.0, 38.7), Waypoint::new(-8.998, 38.7)])
             .build()
             .unwrap();
-        let rec = Recorder::start(stream::pending().boxed(), Some(Arc::new(track)), Utc::now(), None);
+        let rec = Recorder::start(stream::pending().boxed(), Some(Arc::new(track)), None, Utc::now(), None);
         assert!(rec.session.is_some());
         assert!(rec.stop().await.session.is_some());
     }
@@ -201,6 +204,7 @@ mod tests {
         let mut rec = Recorder::start(
             stream::iter(fixes.clone().into_iter().map(Ok)).boxed(),
             Some(track.clone()),
+            None,
             Utc::now(),
             Some(Box::new(Collect(journal.clone()))),
         );
@@ -215,7 +219,7 @@ mod tests {
     #[tokio::test]
     async fn pushes_snapshots_then_closes() {
         let (tx, rx) = futures::channel::mpsc::unbounded();
-        let mut rec = Recorder::start(rx.boxed(), None, Utc::now(), None);
+        let mut rec = Recorder::start(rx.boxed(), None, None, Utc::now(), None);
         tx.unbounded_send(Ok(fix(0, 12.0))).unwrap();
         rec.speedometer.changed().await.unwrap();
         assert_eq!(rec.speedometer.borrow().current_speed_ms, 12.0);

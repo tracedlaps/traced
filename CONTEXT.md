@@ -68,10 +68,10 @@ The read-only view of a `Speedometer`'s current state (current speed, top speed,
 ### Timing
 
 **Correlator**:
-Stateful `FixConsumer` that matches live fixes against an armed `Track`'s geometry to detect gate crossings, interpolating the exact crossing timestamp between consecutive fixes. Owns a `LiveSessionSnapshot` for its `Session`.
+Stateful `FixConsumer` that matches live fixes against an armed `Track`'s geometry to detect gate crossings, interpolating the exact crossing timestamp between consecutive fixes. Owns a `LiveSessionSnapshot` for its `Session`, and computes the `Delta` against its `Reference lap`.
 
 **LiveSessionSnapshot**:
-The read-only view of a `Correlator`'s current state (status, current lap and sector, lap and sector clock anchors, last lap/sector times), pushed to the UI on change. The UI never computes timing itself; its one exception is rendering an anchor's `elapsed()` for the live clocks.
+The read-only view of a `Correlator`'s current state (status, current lap and sector, lap and sector clock anchors, last lap/sector times, the `Personal best` and `Delta`s), pushed to the UI on change. The UI never computes timing itself; its one exception is rendering an anchor's `elapsed()` for the live clocks.
 
 **Session**:
 One continuous timed attempt on a `Track`: a reference to the `Track` plus, depending on `TrackShape`, either an ordered `Vec<Lap>` (Closed) or a single `Run` (Open). Laps/Runs store only raw gate-crossing timestamps — durations and deltas are derived, never stored.
@@ -82,6 +82,18 @@ One completed loop of a `Closed` `Track` — from one start_gate crossing to the
 
 **Run**:
 One completed pass of an `Open` `Track`, start_gate to finish_gate. The Open-track equivalent of a Lap; not called "Lap" because nothing loops.
+
+### Comparison
+
+**Personal best**:
+The fastest `Lap` (or `Run`) on a `Track` across every saved recording, laps with `gps_gap` excluded. Derived (`timing::best_lap`), never stored.
+_Avoid_: PB as a stored record, session best (only all-time is compared against).
+
+**Reference lap**:
+The lap raced against while recording (`timing::Reference`): the `Personal best` at recording start, plus its time at each distance past the start gate, built from its saved fixes. A faster clean lap during the recording replaces it straight away.
+
+**Delta**:
+The time gap to the `Reference lap`, positive when behind. Live, it's the lap so far minus the reference's time at the same distance along the track (`Track::locate`); at each gate it's exact, from both laps' crossings. Also per lap and per sector.
 
 ## Implementation status (2026-09-24)
 

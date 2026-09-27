@@ -14,6 +14,9 @@ pub struct MockGPSConfig {
     pub loop_fixes: bool,
     /// Max random offset (m) added to each fix's position, per axis, when sent.
     pub jitter_m: f64,
+    /// Max fraction each fix's interval is randomly stretched or shrunk by, so pace (and lap
+    /// times) vary.
+    pub pace_jitter: f64,
 }
 
 impl Default for MockGPSConfig {
@@ -22,6 +25,7 @@ impl Default for MockGPSConfig {
             interval: Duration::from_secs(1),
             loop_fixes: true,
             jitter_m: 0.0,
+            pace_jitter: 0.0,
         }
     }
 }
@@ -45,7 +49,7 @@ impl GpsProvider for MockGPSProvider {
     }
 
     fn stream_fixes(&self) -> BoxStream<'static, Result<super::GPSFix, super::GpsError>> {
-        let (interval, jitter) = (self.config.interval, self.config.jitter_m);
+        let (interval, jitter, pace) = (self.config.interval, self.config.jitter_m, self.config.pace_jitter);
         let fixes = self.fixes.clone();
         let last_fix = self.last_fix.clone();
         let status = self.status.clone();
@@ -58,7 +62,8 @@ impl GpsProvider for MockGPSProvider {
 
         stream::iter(iter)
             .then(move |fix| async move {
-                tokio::time::sleep(interval).await;
+                let wait = interval.mul_f64(1.0 + rand::rng().random_range(-pace..=pace));
+                tokio::time::sleep(wait).await;
                 // Stamped on send, like a real device, so looped fixes keep moving forward in time.
                 Ok(GPSFix { timestamp: chrono::Utc::now(), ..jittered(fix, jitter) })
             })
@@ -201,7 +206,7 @@ mod tests {
         assert!(mock.config.loop_fixes);
 
         // Starts just before the gate: two laps and a bit, one fix per second.
-        let (mut c, _rx) = Correlator::new(std::sync::Arc::new(track));
+        let (mut c, _rx) = Correlator::new(std::sync::Arc::new(track), None);
         for (i, fix) in mock.fixes.iter().cycle().take(2 * n + 2).enumerate() {
             c.on_fix(GPSFix { timestamp: DateTime::UNIX_EPOCH + TimeDelta::seconds(i as i64), ..*fix });
         }
@@ -225,7 +230,7 @@ mod tests {
         let mock = MockGPSProvider::drive(&track, 10.0, MockGPSConfig::default());
         assert!(!mock.config.loop_fixes);
 
-        let (mut c, _rx) = Correlator::new(std::sync::Arc::new(track));
+        let (mut c, _rx) = Correlator::new(std::sync::Arc::new(track), None);
         for (i, fix) in mock.fixes.iter().enumerate() {
             c.on_fix(GPSFix { timestamp: DateTime::UNIX_EPOCH + TimeDelta::seconds(i as i64), ..*fix });
         }
@@ -242,7 +247,7 @@ mod tests {
 
     #[tokio::test]
     async fn stream_stamps_and_jitters_on_send() {
-        let config = MockGPSConfig { interval: Duration::from_millis(1), loop_fixes: true, jitter_m: 5.0 };
+        let config = MockGPSConfig { interval: Duration::from_millis(1), loop_fixes: true, jitter_m: 5.0, ..Default::default() };
         let fix = GPSFix { latitude: 38.7, longitude: -9.0, ..Default::default() };
         let sent: Vec<_> = MockGPSProvider::new(vec![fix], config).stream_fixes().take(3).map(Result::unwrap).collect().await;
         assert!(sent.windows(2).all(|w| w[0].timestamp < w[1].timestamp));

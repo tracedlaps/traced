@@ -13,12 +13,23 @@ pub use live::Live;
 pub use record::{Speedometer, Tracks};
 pub use results::Results;
 pub use shell::Shell;
+use chrono::TimeDelta;
+use dioxus::prelude::*;
 use traced_core::{gps::GpsStatus, track::Track};
 
 /// `m:ss.t`, the one format for every lap, split and clock.
 fn lap_time(secs: f64) -> String {
     let tenths = (secs.max(0.0) * 10.0).floor() as u64;
     format!("{}:{:02}.{}", tenths / 600, tenths / 10 % 60, tenths % 10)
+}
+
+/// Signed seconds against the best: green when ahead (negative), red when behind.
+#[component]
+fn Delta(delta: TimeDelta) -> Element {
+    let secs = delta.as_seconds_f64();
+    rsx! {
+        span { class: if secs < 0.0 { "delta ahead" } else { "delta behind" }, "{secs:+.2}" }
+    }
 }
 
 /// Start to finish (m), or a lap: what's timed, without lead-in or lead-out waypoints.

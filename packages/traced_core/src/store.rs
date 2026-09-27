@@ -11,6 +11,7 @@ use crate::{
     gps::GPSFix,
     recorder::RecordingSummary,
     speedometer::SpeedometerSnapshot,
+    timing::{Reference, best_lap},
     track::{Session, Track, TrackBuildError, TrackBuilder},
 };
 
@@ -342,6 +343,13 @@ impl Store {
         .collect()
     }
 
+    /// The best lap on `track` across its recordings, to race against; `None` before any.
+    pub fn reference(&self, track: &Track) -> Result<Option<Reference>, StoreError> {
+        let recordings = self.recordings()?;
+        let Some((id, lap)) = best_lap(&recordings, track.uuid) else { return Ok(None) };
+        Ok(Some(Reference::new(track, lap.clone(), &self.fixes(id)?)))
+    }
+
     /// A recording's fixes, in order.
     pub fn fixes(&self, recording: Uuid) -> Result<Vec<GPSFix>, StoreError> {
         let mut stmt = self.db.prepare(
@@ -513,6 +521,24 @@ mod tests {
         r.fixes.iter().for_each(|f| store.append_fix(id, f).unwrap());
         store.finish_recording(id, r, false).unwrap();
         id
+    }
+
+    #[test]
+    fn reference_is_the_best_lap_with_its_fixes() {
+        use crate::track::correlator::tests::{around, fix, square_spec};
+        let store = Store::open(":memory:").unwrap();
+        let spec = square_spec(&[]);
+        store.put_track(&spec).unwrap();
+        let track = Arc::new(spec.build().unwrap());
+        assert_eq!(store.reference(&track).unwrap(), None);
+        // Two laps each, at 8 m/s then 10 m/s: 50 s and 40 s laps.
+        for speed in [8.0, 10.0] {
+            let fixes = (0..90).map(|i| fix(around(25.0 + 10.0 * i as f64), (25.0 + 10.0 * i as f64) / speed)).collect();
+            save(&store, &RecordingSummary::replay(Utc::now(), fixes, Some(track.clone())));
+        }
+        let r = store.reference(&track).unwrap().unwrap();
+        assert_eq!(r.lap.duration(), TimeDelta::seconds(40));
+        assert!((r.time_at(100.0) - TimeDelta::seconds(10)).abs() < TimeDelta::milliseconds(1));
     }
 
     #[test]

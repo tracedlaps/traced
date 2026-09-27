@@ -1,6 +1,6 @@
 :root {
   --bg: #fafaf9; --fg: #1c1917; --muted: #78716c; --line: #e7e5e4;
-  --accent: #ea580c; --stop: #dc2626;
+  --accent: #ea580c; --stop: #dc2626; --ahead: #16a34a;
   --sector-0: #2563eb; --sector-1: #16a34a; --sector-2: #9333ea; --sector-3: #0891b2;
 }
 @media (prefers-color-scheme: dark) {
@@ -58,6 +58,12 @@ small.interrupted { color: var(--accent); }
 .laps th, .laps td { padding: 8px 4px; border-bottom: 1px solid var(--line); text-align: left; }
 .laps th { color: var(--muted); font-weight: 500; }
 .gap { color: var(--accent); }
+.delta { font-weight: 700; font-variant-numeric: tabular-nums; }
+.delta.ahead { color: var(--ahead); }
+.delta.behind { color: var(--stop); }
+.live-delta .delta { font-size: 2.25rem; }
+.pb { color: var(--accent); font-weight: 700; }
+.best { color: var(--muted); }
 .gps p { margin: 0; }
 .gps .error { color: var(--stop); }
 .gps label { display: flex; gap: 8px; align-items: center; padding: 8px 0; }

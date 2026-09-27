@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use dioxus::prelude::*;
 use traced_core::track::LiveStatus;
 
-use super::{gps_status, kmh, lap_time, track_map::TrackMap};
+use super::{gps_status, kmh, lap_time, track_map::TrackMap, Delta};
 use crate::{recorder::RecorderCtx, Route};
 
 #[component]
@@ -40,6 +40,9 @@ pub fn Live() -> Element {
                         LiveStatus::InProgress { lap_anchor, sector_anchor, sector } => rsx! {
                             p { "Lap {live.laps + 1}" }
                             LiveClock { anchor: lap_anchor, class: "clock" }
+                            if let Some(delta) = live.delta {
+                                div { class: "live-delta", Delta { delta } }
+                            }
                             // Same color as the sector on the map.
                             div { class: "sector-clock", style: "color: var(--sector-{sector % 4})",
                                 span { "Sector {sector + 1}" }
@@ -49,10 +52,19 @@ pub fn Live() -> Element {
                         LiveStatus::Finished => rsx! { p { "Finished" } },
                     }
                     if let Some(last) = live.last_sector {
-                        p { "Last sector {lap_time(last.as_seconds_f64())}" }
+                        p {
+                            "Last sector {lap_time(last.as_seconds_f64())} "
+                            if let Some(delta) = live.last_sector_delta { Delta { delta } }
+                        }
                     }
                     if let Some(last) = live.last_lap {
-                        p { "Last lap {lap_time(last.as_seconds_f64())}" }
+                        p {
+                            "Last lap {lap_time(last.as_seconds_f64())} "
+                            if let Some(delta) = live.last_lap_delta { Delta { delta } }
+                        }
+                    }
+                    if let Some(best) = live.best {
+                        p { class: "best", "Best {lap_time(best.as_seconds_f64())}" }
                     }
                 }
             }
