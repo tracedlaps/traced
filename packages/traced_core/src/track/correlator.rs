@@ -144,7 +144,7 @@ fn crossing(a: Coord, b: Coord, gate: &Gate) -> Option<f64> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::track::{Completed, TrackShape, Waypoint};
 
@@ -155,14 +155,14 @@ mod tests {
     }
 
     /// 100 m square loop, first leg east. Gate at 50 m along; sectors optional.
-    fn square(sectors: &[(f64, f64)]) -> Arc<Track> {
+    pub(crate) fn square(sectors: &[(f64, f64)]) -> Arc<Track> {
         let corners = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)].map(|(x, y)| local(x, y));
         let b = Track::builder("Square", TrackShape::Closed { gate: local(50.0, 0.0) }).waypoints(corners);
         Arc::new(sectors.iter().fold(b, |b, &(x, y)| b.sector_gate_at(local(x, y))).build().unwrap())
     }
 
     /// Position `s` metres around the square.
-    fn around(s: f64) -> (f64, f64) {
+    pub(crate) fn around(s: f64) -> (f64, f64) {
         match s.rem_euclid(400.0) {
             s if s < 100.0 => (s, 0.0),
             s if s < 200.0 => (100.0, s - 100.0),
@@ -172,7 +172,7 @@ mod tests {
     }
 
     /// A fix at local `(x, y)`, `secs` after the epoch.
-    fn fix((x, y): (f64, f64), secs: f64) -> GPSFix {
+    pub(crate) fn fix((x, y): (f64, f64), secs: f64) -> GPSFix {
         let w = local(x, y);
         let timestamp = DateTime::UNIX_EPOCH + TimeDelta::milliseconds((secs * 1000.0) as i64);
         GPSFix { longitude: w.x(), latitude: w.y(), timestamp, ..Default::default() }

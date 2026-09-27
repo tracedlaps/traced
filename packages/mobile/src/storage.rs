@@ -9,8 +9,11 @@ use std::{
 
 use dioxus::logger::tracing::warn;
 use serde::Deserialize;
+use uuid::Uuid;
+use chrono::{DateTime, Utc};
 use traced_core::{
-    recorder::RecordingSummary,
+    gps::GPSFix,
+    recorder::{FixConsumer, RecordingSummary},
     store::{SavedRecording, Store, StoreError},
     track::{Track, TrackBuilder},
 };
@@ -88,6 +91,9 @@ fn open() -> Result<Store, Box<dyn Error>> {
     if store.tracks()?.is_empty() {
         PRESETS.iter().try_for_each(|p| store.put_track(&p.track))?;
     }
+    if let Err(e) = store.recover() {
+        warn!("recover recordings: {e}");
+    }
     Ok(store)
 }
 
@@ -113,11 +119,30 @@ pub fn put_track(track: &TrackBuilder) -> Option<()> {
     with_store("save track", |s| s.put_track(track))
 }
 
-/// Keeps a finished recording, unless it never got a fix. Blocks on the write.
-pub fn save(summary: &RecordingSummary) {
-    if !summary.fixes.is_empty() {
-        with_store("save recording", |s| s.put_recording(summary));
+/// Saves each fix as it arrives, so a crash loses at most the one being written.
+struct Journal(Uuid);
+
+impl FixConsumer for Journal {
+    fn on_fix(&mut self, fix: GPSFix) {
+        with_store("save fix", |s| s.append_fix(self.0, &fix));
     }
+}
+
+/// Starts keeping a recording: its id, and the journal its `Recorder` saves fixes through.
+/// `None` without a store, when it isn't kept.
+pub fn begin(
+    started_at: DateTime<Utc>,
+    track: Option<&Track>,
+) -> Option<(Uuid, Box<dyn FixConsumer + Send>)> {
+    let id = with_store("start recording", |s| {
+        s.begin_recording(started_at, track.map(|t| t.uuid))
+    })?;
+    Some((id, Box::new(Journal(id))))
+}
+
+/// Stores how recording `id` went (its fixes are already in), or drops it without any.
+pub fn finish(id: Uuid, summary: &RecordingSummary) {
+    with_store("finish recording", |s| s.finish_recording(id, summary, false));
 }
 
 /// Saved recordings, newest first.

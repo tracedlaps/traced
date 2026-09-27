@@ -3,12 +3,14 @@ use std::sync::Arc;
 use dioxus::prelude::*;
 use traced_core::track::Track;
 
-use crate::storage;
+use crate::{recorder::RecorderCtx, storage};
 
 /// Export everything to a file, or replace everything with one.
 #[component]
 pub fn Backup() -> Element {
     let mut tracks = use_context::<Signal<Vec<Arc<Track>>>>();
+    // Restoring would pull the recording's row out from under it.
+    let recording = use_context::<RecorderCtx>().recording.read().is_some();
     // Last backup action's outcome.
     let mut status = use_signal(|| None::<Result<&str, String>>);
     let mut confirm_restore = use_signal(|| false);
@@ -42,7 +44,12 @@ pub fn Backup() -> Element {
                 button { class: "stop", onclick: restore, "Choose backup and replace" }
                 button { class: "button secondary", onclick: move |_| confirm_restore.set(false), "Cancel" }
             } else {
-                button { class: "button secondary", onclick: move |_| confirm_restore.set(true), "Restore backup" }
+                button {
+                    class: "button secondary",
+                    disabled: recording,
+                    onclick: move |_| confirm_restore.set(true),
+                    "Restore backup"
+                }
             }
             match status() {
                 Some(Ok(done)) => rsx! { p { class: "note", "{done}" } },

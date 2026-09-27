@@ -1,6 +1,6 @@
 //! Local persistence: one SQLite file for everything the app keeps.
 
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, OpenFlags, backup::Progress, params};
@@ -52,6 +52,11 @@ const MIGRATIONS: &[&str] = &[
         heading_accuracy_deg REAL
     ) STRICT;
     CREATE INDEX fixes_by_recording ON fixes (recording_id, time_ms);",
+    // Fixes are saved as they come in: a recording without `ended_at` is live, or was cut short.
+    "ALTER TABLE recordings ADD COLUMN ended_at INTEGER; -- Unix ms, its last fix's
+    ALTER TABLE recordings ADD COLUMN interrupted INTEGER NOT NULL DEFAULT 0; -- recovered after the app died
+    UPDATE recordings SET ended_at =
+        COALESCE((SELECT max(time_ms) FROM fixes WHERE recording_id = recordings.id), started_at);",
 ];
 
 pub struct Store {
@@ -65,6 +70,8 @@ pub struct SavedRecording {
     pub started_at: DateTime<Utc>,
     pub session: Option<Session>,
     pub speedometer: SpeedometerSnapshot,
+    /// Recovered from its saved fixes after the app died mid-recording.
+    pub interrupted: bool,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -90,6 +97,9 @@ impl Store {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
         let mut db = Connection::open(path)?;
         db.pragma_update(None, "foreign_keys", true)?;
+        // Each saved fix is its own commit: WAL makes that cheap and still survives a crash.
+        db.pragma_update(None, "journal_mode", "WAL")?;
+        db.pragma_update(None, "synchronous", "NORMAL")?;
         migrate(&mut db)?;
         Ok(Self { db })
     }
@@ -159,28 +169,30 @@ impl Store {
         Ok(())
     }
 
-    /// Saves a finished recording with all its fixes, under a new id.
-    pub fn put_recording(&mut self, r: &RecordingSummary) -> Result<Uuid, StoreError> {
+    /// Starts saving a recording, under a new id; its fixes follow through `append_fix`.
+    pub fn begin_recording(
+        &self,
+        started_at: DateTime<Utc>,
+        track: Option<Uuid>,
+    ) -> Result<Uuid, StoreError> {
         let id = Uuid::new_v4();
-        let tx = self.db.transaction()?;
-        tx.execute(
-            "INSERT INTO recordings VALUES (?1, ?2, ?3, ?4, ?5)",
+        self.db.execute(
+            "INSERT INTO recordings (id, started_at, track_id, speedometer) VALUES (?1, ?2, ?3, ?4)",
             params![
                 id.to_string(),
-                r.started_at.timestamp_millis(),
-                r.session.as_ref().map(|s| s.track_id.to_string()),
-                r.session
-                    .as_ref()
-                    .map(|s| serde_json::to_string(&s.completed))
-                    .transpose()?,
-                serde_json::to_string(&r.speedometer)?,
+                started_at.timestamp_millis(),
+                track.map(|t| t.to_string()),
+                serde_json::to_string(&SpeedometerSnapshot::default())?,
             ],
         )?;
-        let mut insert =
-            tx.prepare("INSERT INTO fixes VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)")?;
-        for f in &r.fixes {
-            insert.execute(params![
-                id.to_string(),
+        Ok(id)
+    }
+
+    pub fn append_fix(&self, recording: Uuid, f: &GPSFix) -> Result<(), StoreError> {
+        self.db.execute(
+            "INSERT INTO fixes VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                recording.to_string(),
                 f.timestamp.timestamp_millis(),
                 f.latitude,
                 f.longitude,
@@ -191,17 +203,75 @@ impl Store {
                 f.vertical_accuracy_m,
                 f.speed_accuracy_ms,
                 f.heading_accuracy_deg,
-            ])?;
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Stores how recording `id` went, or drops it if it never got a fix.
+    pub fn finish_recording(
+        &self,
+        id: Uuid,
+        r: &RecordingSummary,
+        interrupted: bool,
+    ) -> Result<(), StoreError> {
+        let Some(last) = r.fixes.last() else {
+            self.db
+                .execute("DELETE FROM recordings WHERE id = ?1", [id.to_string()])?;
+            return Ok(());
+        };
+        self.db.execute(
+            "UPDATE recordings SET completed = ?2, speedometer = ?3, ended_at = ?4, interrupted = ?5
+            WHERE id = ?1",
+            params![
+                id.to_string(),
+                r.session
+                    .as_ref()
+                    .map(|s| serde_json::to_string(&s.completed))
+                    .transpose()?,
+                serde_json::to_string(&r.speedometer)?,
+                last.timestamp.timestamp_millis(),
+                interrupted,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Finishes every recording the app died during, from the fixes it saved. Call before recording.
+    pub fn recover(&self) -> Result<(), StoreError> {
+        let unfinished = self
+            .db
+            .prepare("SELECT id, started_at, track_id FROM recordings WHERE ended_at IS NULL")?
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        if unfinished.is_empty() {
+            return Ok(());
         }
-        drop(insert);
-        tx.commit()?;
-        Ok(id)
+        let tracks: Vec<_> = self.tracks()?.into_iter().map(Arc::new).collect();
+        for (id, started_at, track_id) in unfinished {
+            let id = Uuid::parse_str(&id)?;
+            let track = track_id.and_then(|t| tracks.iter().find(|x| x.uuid.to_string() == t));
+            let summary = RecordingSummary::replay(
+                DateTime::from_timestamp_millis(started_at).unwrap_or_default(),
+                self.fixes(id)?,
+                track.cloned(),
+            );
+            self.finish_recording(id, &summary, true)?;
+        }
+        Ok(())
     }
 
     /// Every recording, newest first, without its fixes.
     pub fn recordings(&self) -> Result<Vec<SavedRecording>, StoreError> {
         let mut stmt = self.db.prepare(
-            "SELECT id, started_at, track_id, completed, speedometer FROM recordings ORDER BY started_at DESC",
+            "SELECT id, started_at, track_id, completed, speedometer, interrupted FROM recordings
+            WHERE ended_at IS NOT NULL ORDER BY started_at DESC",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok((
@@ -210,10 +280,11 @@ impl Store {
                 r.get::<_, Option<String>>(2)?,
                 r.get::<_, Option<String>>(3)?,
                 r.get::<_, String>(4)?,
+                r.get::<_, bool>(5)?,
             ))
         })?;
         rows.map(|row| {
-            let (id, started_at, track_id, completed, speedometer) = row?;
+            let (id, started_at, track_id, completed, speedometer, interrupted) = row?;
             let session = match (track_id, completed) {
                 (Some(track_id), Some(completed)) => Some(Session {
                     track_id: Uuid::parse_str(&track_id)?,
@@ -226,6 +297,7 @@ impl Store {
                 started_at: DateTime::from_timestamp_millis(started_at).unwrap_or_default(),
                 session,
                 speedometer: serde_json::from_str(&speedometer)?,
+                interrupted,
             })
         })
         .collect()
@@ -359,14 +431,24 @@ mod tests {
         }
     }
 
+    /// Saves `r` the way a live recording does.
+    fn save(store: &Store, r: &RecordingSummary) -> Uuid {
+        let id = store
+            .begin_recording(r.started_at, r.session.as_ref().map(|s| s.track_id))
+            .unwrap();
+        r.fixes.iter().for_each(|f| store.append_fix(id, f).unwrap());
+        store.finish_recording(id, r, false).unwrap();
+        id
+    }
+
     #[test]
     fn recordings_round_trip_newest_first() {
-        let mut store = Store::open(":memory:").unwrap();
+        let store = Store::open(":memory:").unwrap();
         let spec = sprint("Sprint");
         store.put_track(&spec).unwrap();
         let timed = summary(Some(&spec.build().unwrap()), 100);
-        let timed_id = store.put_recording(&timed).unwrap();
-        store.put_recording(&summary(None, 200)).unwrap();
+        let timed_id = save(&store, &timed);
+        save(&store, &summary(None, 200));
 
         let saved = store.recordings().unwrap();
         assert_eq!(saved.len(), 2);
@@ -376,20 +458,64 @@ mod tests {
             started_at: timed.started_at,
             session: timed.session,
             speedometer: timed.speedometer,
+            interrupted: false,
         };
         assert_eq!(saved[1], expected);
         assert_eq!(store.fixes(timed_id).unwrap(), timed.fixes);
     }
 
     #[test]
-    fn deleting_a_track_deletes_its_recordings() {
-        let mut store = Store::open(":memory:").unwrap();
+    fn recover_finishes_what_the_app_died_during() {
+        let store = Store::open(":memory:").unwrap();
         let spec = sprint("Sprint");
         store.put_track(&spec).unwrap();
-        let timed = store
-            .put_recording(&summary(Some(&spec.clone().build().unwrap()), 100))
-            .unwrap();
-        store.put_recording(&summary(None, 200)).unwrap();
+        let cut = summary(None, 100);
+        let id = store.begin_recording(cut.started_at, Some(spec.uuid())).unwrap();
+        cut.fixes.iter().for_each(|f| store.append_fix(id, f).unwrap());
+        store.begin_recording(cut.started_at, None).unwrap(); // died before any fix
+        assert!(store.recordings().unwrap().is_empty());
+
+        store.recover().unwrap();
+        let replayed =
+            RecordingSummary::replay(cut.started_at, cut.fixes.clone(), Some(Arc::new(spec.build().unwrap())));
+        let expected = SavedRecording {
+            id,
+            started_at: cut.started_at,
+            session: replayed.session,
+            speedometer: replayed.speedometer,
+            interrupted: true,
+        };
+        assert_eq!(store.recordings().unwrap(), [expected]);
+        assert_eq!(store.fixes(id).unwrap(), cut.fixes);
+    }
+
+    #[test]
+    fn upgrading_keeps_recordings_saved_whole() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("v2.db");
+        let old = Connection::open(&path).unwrap();
+        MIGRATIONS[..2].iter().for_each(|m| old.execute_batch(m).unwrap());
+        old.pragma_update(None, "user_version", 2).unwrap();
+        old.execute_batch(
+            "INSERT INTO recordings VALUES ('00000000-0000-0000-0000-000000000001', 0, NULL, NULL, '{\"current_speed_ms\":0,\"top_speed_ms\":0,\"distance_m\":0,\"average_speed_ms\":0,\"elapsed\":{\"secs\":0,\"nanos\":0}}')",
+        )
+        .unwrap();
+        drop(old);
+
+        let store = Store::open(&path).unwrap();
+        store.recover().unwrap(); // leaves it alone: it isn't unfinished
+        let saved = store.recordings().unwrap();
+        assert_eq!(saved.len(), 1);
+        assert!(!saved[0].interrupted);
+    }
+
+    #[test]
+    fn deleting_a_track_deletes_its_recordings() {
+        let store = Store::open(":memory:").unwrap();
+        let spec = sprint("Sprint");
+        store.put_track(&spec).unwrap();
+        let timed = save(&store, &summary(Some(&spec.clone().build().unwrap()), 100));
+        save(&store, &summary(None, 200));
 
         store.delete_track(spec.uuid()).unwrap();
         assert_eq!(store.recordings().unwrap().len(), 1);
@@ -400,12 +526,10 @@ mod tests {
     fn restore_replaces_everything_with_an_export() {
         let dir = tempfile::tempdir().unwrap();
         let backup = dir.path().join("backup.db");
-        let mut source = Store::open(":memory:").unwrap();
+        let source = Store::open(":memory:").unwrap();
         let spec = sprint("Sprint");
         source.put_track(&spec).unwrap();
-        let id = source
-            .put_recording(&summary(Some(&spec.clone().build().unwrap()), 100))
-            .unwrap();
+        let id = save(&source, &summary(Some(&spec.clone().build().unwrap()), 100));
         source.export(&backup).unwrap();
         source.export(&backup).unwrap(); // over an existing file
 

@@ -1,4 +1,4 @@
-mod correlator;
+pub(crate) mod correlator;
 pub mod import;
 mod session;
 pub use correlator::{Correlator, LiveSessionSnapshot, LiveStatus};

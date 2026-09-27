@@ -29,6 +29,9 @@ pub fn History() -> Element {
                             {track_name(&tracks.read(), r.session.as_ref())}
                             small { "{when(r.started_at)} · {outcome(r.session.as_ref())}" }
                             small { "{r.speedometer.distance_m / 1000.0:.2} km · top {kmh(r.speedometer.top_speed_ms)} km/h" }
+                            if r.interrupted {
+                                small { class: "interrupted", "Interrupted" }
+                            }
                         }
                     }
                 }
@@ -52,6 +55,9 @@ pub fn SavedResults(id: Uuid) -> Element {
         main {
             h1 { {track_name(&tracks.read(), r.session.as_ref())} }
             small { {when(r.started_at)} }
+            if r.interrupted {
+                small { class: "interrupted", "Interrupted: the app closed mid-recording, kept up to its last fix." }
+            }
             div { class: "scroll",
                 Report { speed: r.speedometer, session: r.session }
             }

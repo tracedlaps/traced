@@ -1,5 +1,7 @@
 use std::{convert::identity, sync::Arc};
 
+use chrono::Utc;
+
 use dioxus::{core::spawn_forever, prelude::*};
 use futures::stream::BoxStream;
 use tokio::sync::watch;
@@ -12,6 +14,8 @@ use traced_core::{
     speedometer::SpeedometerSnapshot,
     track::{LiveSessionSnapshot, Track},
 };
+
+use uuid::Uuid;
 
 use crate::{
     gps::wire::Permission,
@@ -28,6 +32,8 @@ type Fixes = BoxStream<'static, Result<GPSFix, GpsError>>;
 pub struct RecorderCtx {
     pub recording: Signal<Option<Recording>>,
     pub last_summary: Signal<Option<RecordingSummary>>,
+    /// The current recording's id in the store; `None` if it isn't being saved.
+    saved: Signal<Option<Uuid>>,
     /// The track of the current (or last) recording.
     pub track: Signal<Option<Arc<Track>>>,
     pub fix: Signal<Option<GPSFix>>,
@@ -67,6 +73,7 @@ impl RecorderCtx {
         let ctx = Self {
             recording: Signal::new_in_scope(None, ScopeId::ROOT),
             last_summary: Signal::new_in_scope(None, ScopeId::ROOT),
+            saved: Signal::new_in_scope(None, ScopeId::ROOT),
             track: Signal::new_in_scope(None, ScopeId::ROOT),
             fix: Signal::new_in_scope(None, ScopeId::ROOT),
             speed: Signal::new_in_scope(None, ScopeId::ROOT),
@@ -95,7 +102,9 @@ impl RecorderCtx {
             Some(fixes) => fixes,
             None => self.mock_fixes(track.clone()),
         };
-        let recording = Recorder::start(fixes, track.clone());
+        let started_at = Utc::now();
+        let (saved, journal) = storage::begin(started_at, track.as_deref()).unzip();
+        let recording = Recorder::start(fixes, track.clone(), started_at, journal);
         bridge(recording.fix.clone(), self.fix, identity);
         bridge(recording.speedometer.clone(), self.speed, Some);
         if let Some(live) = recording.session.clone() {
@@ -103,6 +112,7 @@ impl RecorderCtx {
         }
         self.track.set(track);
         self.last_summary.set(None);
+        self.saved.set(saved);
         self.recording.set(Some(recording));
         self.keep_screen_on(true);
         Ok(())
@@ -113,15 +123,12 @@ impl RecorderCtx {
             return;
         };
         self.keep_screen_on(false);
+        let saved = self.saved.write().take();
         spawn_forever(async move {
             let summary = recording.stop().await;
-            // A long recording's fixes take a moment to write: keep that off the UI thread.
-            let summary = tokio::task::spawn_blocking(move || {
-                storage::save(&summary);
-                summary
-            })
-            .await
-            .expect("save task panicked");
+            if let Some(id) = saved {
+                storage::finish(id, &summary);
+            }
             self.last_summary.set(Some(summary));
         });
     }

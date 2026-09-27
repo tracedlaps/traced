@@ -23,6 +23,8 @@ pub struct Recorder {
     fix: watch::Sender<Option<GPSFix>>,
     speedometer: Speedometer,
     correlator: Option<Correlator>,
+    /// Sees each fix too, e.g. to save it as it arrives.
+    journal: Option<Box<dyn FixConsumer + Send>>,
     started_at: DateTime<Utc>,
     fixes: Vec<GPSFix>,
 }
@@ -32,6 +34,8 @@ impl Recorder {
     pub fn start(
         fixes: BoxStream<'static, Result<GPSFix, GpsError>>,
         track: Option<Arc<Track>>,
+        started_at: DateTime<Utc>,
+        journal: Option<Box<dyn FixConsumer + Send>>,
     ) -> Recording {
         let (speedometer, speed_rx) = Speedometer::new();
         let (correlator, session) = track.map(Correlator::new).unzip();
@@ -47,7 +51,8 @@ impl Recorder {
                     fix,
                     speedometer,
                     correlator,
-                    started_at: Utc::now(),
+                    journal,
+                    started_at,
                     fixes: Vec::new(),
                 }
                 .run(fixes, stop_rx),
@@ -71,6 +76,9 @@ impl Recorder {
                         self.speedometer.on_fix(fix);
                         if let Some(c) = &mut self.correlator {
                             c.on_fix(fix);
+                        }
+                        if let Some(j) = &mut self.journal {
+                            j.on_fix(fix);
                         }
                     }
                     Some(Err(e)) => tracing::warn!("skipping GPS error: {e}"),
@@ -115,6 +123,26 @@ pub struct RecordingSummary {
     pub fixes: Vec<GPSFix>,
 }
 
+impl RecordingSummary {
+    /// Re-derives a recording from its fixes, as if they had just come in live.
+    pub fn replay(started_at: DateTime<Utc>, fixes: Vec<GPSFix>, track: Option<Arc<Track>>) -> Self {
+        let (mut speedometer, _) = Speedometer::new();
+        let mut correlator = track.map(|t| Correlator::new(t).0);
+        for &fix in &fixes {
+            speedometer.on_fix(fix);
+            if let Some(c) = &mut correlator {
+                c.on_fix(fix);
+            }
+        }
+        Self {
+            started_at,
+            session: correlator.map(Correlator::into_session),
+            speedometer: speedometer.snapshot(),
+            fixes,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,7 +156,7 @@ mod tests {
             Err(GpsError::DeviceNotFound),
             Ok(fix(1, 10.0)),
         ]);
-        let mut rec = Recorder::start(fixes.boxed(), None);
+        let mut rec = Recorder::start(fixes.boxed(), None, Utc::now(), None);
         while rec.speedometer.changed().await.is_ok() {} // closes when the stream ends
         let summary = rec.stop().await;
         assert_eq!(summary.speedometer.distance_m, 10.0);
@@ -137,7 +165,7 @@ mod tests {
 
     #[tokio::test]
     async fn stop_ends_endless_stream() {
-        let rec = Recorder::start(stream::pending().boxed(), None);
+        let rec = Recorder::start(stream::pending().boxed(), None, Utc::now(), None);
         assert_eq!(rec.stop().await.speedometer, SpeedometerSnapshot::default());
     }
 
@@ -152,15 +180,42 @@ mod tests {
             .waypoints([Waypoint::new(-9.0, 38.7), Waypoint::new(-8.998, 38.7)])
             .build()
             .unwrap();
-        let rec = Recorder::start(stream::pending().boxed(), Some(Arc::new(track)));
+        let rec = Recorder::start(stream::pending().boxed(), Some(Arc::new(track)), Utc::now(), None);
         assert!(rec.session.is_some());
         assert!(rec.stop().await.session.is_some());
+    }
+
+    struct Collect(Arc<std::sync::Mutex<Vec<GPSFix>>>);
+    impl FixConsumer for Collect {
+        fn on_fix(&mut self, fix: GPSFix) {
+            self.0.lock().unwrap().push(fix);
+        }
+    }
+
+    #[tokio::test]
+    async fn journal_sees_every_fix_and_replaying_them_reproduces_the_recording() {
+        use crate::track::{Completed, correlator::tests::{around, fix, square}};
+        let track = square(&[(100.0, 50.0)]);
+        let fixes: Vec<_> = (0..100).map(|i| fix(around(i as f64 * 10.0), i as f64)).collect();
+        let journal = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut rec = Recorder::start(
+            stream::iter(fixes.clone().into_iter().map(Ok)).boxed(),
+            Some(track.clone()),
+            Utc::now(),
+            Some(Box::new(Collect(journal.clone()))),
+        );
+        while rec.speedometer.changed().await.is_ok() {}
+        let live = rec.stop().await;
+        assert_eq!(*journal.lock().unwrap(), fixes);
+        assert!(matches!(&live.session.as_ref().unwrap().completed, Completed::Laps(l) if l.len() == 2));
+        let journaled = journal.lock().unwrap().clone();
+        assert_eq!(RecordingSummary::replay(live.started_at, journaled, Some(track)), live);
     }
 
     #[tokio::test]
     async fn pushes_snapshots_then_closes() {
         let (tx, rx) = futures::channel::mpsc::unbounded();
-        let mut rec = Recorder::start(rx.boxed(), None);
+        let mut rec = Recorder::start(rx.boxed(), None, Utc::now(), None);
         tx.unbounded_send(Ok(fix(0, 12.0))).unwrap();
         rec.speedometer.changed().await.unwrap();
         assert_eq!(rec.speedometer.borrow().current_speed_ms, 12.0);
