@@ -87,11 +87,14 @@ impl Track {
     pub fn sectors(&self) -> impl Iterator<Item = Sector<'_>> {
         let total = self.length();
         self.gates_ordered().zip(self.gates_ordered().skip(1)).map(move |(from, to)| {
-            // rem_euclid handles a Closed loop's wrap past the polyline seam;
+            // rem_euclid handles a Closed loop's wrap past the polyline seam (only there: an
+            // Open track's finish on its last point is `total` along, not 0);
             // gate -> same gate (no sectors on a loop) is a full lap, not 0.
-            let length = match std::ptr::eq(from, to) {
-                true => total,
-                false => (to.distance_along_track - from.distance_along_track).rem_euclid(total),
+            let d = to.distance_along_track - from.distance_along_track;
+            let length = match (std::ptr::eq(from, to), &self.boundary) {
+                (true, _) => total,
+                (false, Boundary::Open { .. }) => d,
+                (false, Boundary::Closed { .. }) => d.rem_euclid(total),
             };
             Sector { from, to, length }
         })
@@ -635,6 +638,14 @@ mod tests {
         let lengths: Vec<f64> = track.sectors().map(|s| s.length).collect();
         assert!((track.length() - 400.0).abs() < 1e-6);
         assert!((lengths[0] - 300.0).abs() < 1e-6 && (lengths[1] - 100.0).abs() < 1e-6, "{lengths:?}");
+    }
+
+    #[test]
+    fn open_track_gated_on_its_ends_is_timed_end_to_end() {
+        let track = eastbound().build().unwrap();
+        let lengths: Vec<f64> = track.sectors().map(|s| s.length).collect();
+        assert_eq!(lengths.len(), 1);
+        assert!(lengths[0] > 0.0 && close_to(lengths[0], track.length()), "{lengths:?}");
     }
 
     #[test]
