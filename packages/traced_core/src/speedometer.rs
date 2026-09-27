@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 
 use crate::{gps::GPSFix, recorder::FixConsumer};
@@ -10,7 +11,7 @@ const MAX_ACCURACY_M: f32 = 25.0;
 /// A longer gap between fixes is a dropout: it adds no distance.
 const MAX_GAP: Duration = Duration::from_secs(5);
 
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SpeedometerSnapshot {
     pub current_speed_ms: f32,
     pub top_speed_ms: f32,

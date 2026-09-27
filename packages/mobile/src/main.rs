@@ -1,7 +1,8 @@
 use dioxus::prelude::*;
 
 use recorder::RecorderCtx;
-use views::{Live, Results, Setup};
+use uuid::Uuid;
+use views::{History, Live, Results, SavedResults, Setup};
 
 #[cfg(target_os = "android")]
 mod android;
@@ -20,6 +21,10 @@ enum Route {
     Live {},
     #[route("/results")]
     Results {},
+    #[route("/history")]
+    History {},
+    #[route("/history/:id")]
+    SavedResults { id: Uuid },
 }
 
 const MAIN_CSS: Asset = asset!("/assets/main.css");

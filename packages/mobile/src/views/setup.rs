@@ -88,6 +88,7 @@ pub fn Setup() -> Element {
                 },
                 "Start"
             }
+            Link { class: "button secondary", to: Route::History {}, "History" }
         }
     }
 }

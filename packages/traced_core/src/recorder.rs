@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use chrono::{DateTime, Utc};
 use futures::{StreamExt, stream::BoxStream};
 use tokio::{
     sync::{oneshot, watch},
@@ -22,6 +23,8 @@ pub struct Recorder {
     fix: watch::Sender<Option<GPSFix>>,
     speedometer: Speedometer,
     correlator: Option<Correlator>,
+    started_at: DateTime<Utc>,
+    fixes: Vec<GPSFix>,
 }
 
 impl Recorder {
@@ -44,6 +47,8 @@ impl Recorder {
                     fix,
                     speedometer,
                     correlator,
+                    started_at: Utc::now(),
+                    fixes: Vec::new(),
                 }
                 .run(fixes, stop_rx),
             ),
@@ -62,6 +67,7 @@ impl Recorder {
                 item = fixes.next() => match item {
                     Some(Ok(fix)) => {
                         self.fix.send_replace(Some(fix));
+                        self.fixes.push(fix);
                         self.speedometer.on_fix(fix);
                         if let Some(c) = &mut self.correlator {
                             c.on_fix(fix);
@@ -73,6 +79,8 @@ impl Recorder {
             }
         }
         RecordingSummary {
+            started_at: self.started_at,
+            fixes: self.fixes,
             session: self.correlator.map(Correlator::into_session),
             speedometer: self.speedometer.snapshot(),
         }
@@ -99,8 +107,12 @@ impl Recording {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecordingSummary {
+    /// Wall-clock time the recording started, not the first fix's.
+    pub started_at: DateTime<Utc>,
     pub session: Option<Session>,
     pub speedometer: SpeedometerSnapshot,
+    /// Every fix received, in order: enough to replay or re-time the recording later.
+    pub fixes: Vec<GPSFix>,
 }
 
 #[cfg(test)]
@@ -120,6 +132,7 @@ mod tests {
         while rec.speedometer.changed().await.is_ok() {} // closes when the stream ends
         let summary = rec.stop().await;
         assert_eq!(summary.speedometer.distance_m, 10.0);
+        assert_eq!(summary.fixes, [fix(0, 10.0), fix(1, 10.0)]);
     }
 
     #[tokio::test]

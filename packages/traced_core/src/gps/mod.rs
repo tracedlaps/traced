@@ -6,7 +6,7 @@ use tokio::sync::watch;
 
 pub mod mock;
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct GPSFix {
     pub latitude: f64,
     pub longitude: f64,

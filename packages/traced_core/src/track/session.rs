@@ -1,4 +1,5 @@
 use chrono::{DateTime, TimeDelta, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::{Boundary, Track};
@@ -11,7 +12,7 @@ pub struct Session {
     pub completed: Completed,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Completed {
     Laps(Vec<Lap>),
     Run(Option<Run>),
@@ -19,7 +20,7 @@ pub enum Completed {
 
 /// Raw GPS-time gate crossings, in `Track::gates_ordered` order: start gate,
 /// each sector gate, end gate. Durations and splits are derived, never stored.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Lap {
     crossings: Vec<DateTime<Utc>>,
     /// A fix dropout during the lap made its interpolated crossings unreliable.

@@ -19,11 +19,19 @@ Created per recording: takes a `GpsProvider`'s fix stream (the app keeps the pro
 The handle returned by `Recorder::start` for one recording: typed `watch` receivers for the latest raw `GPSFix` and each consumer's snapshot, plus `stop(self) -> RecordingSummary`. Dropping it stops the recording.
 
 **RecordingSummary**:
-What a finished recording hands back: the completed `Session` (if a track was armed) and the final `SpeedometerSnapshot`.
+What a finished recording hands back: its wall-clock start, the completed `Session` (if a track was armed), the final `SpeedometerSnapshot`, and every raw `GPSFix` received (kept so a recording can be replayed or re-timed later).
 
 **FixConsumer**:
 Trait for anything that reacts to a live fix stream (`Track::Correlator`, `Speedometer`). Stateful accumulator fed one fix at a time; publishes its snapshot on a `watch` channel after each fix (latest value only, pushed on change).
 _Avoid_: Subscriber, listener (implies pub/sub — this is direct dispatch from one owner, not a broadcast channel).
+
+### Storage
+
+**Store**:
+The one local SQLite database (`traced_core::store`). Holds tracks as their `TrackBuilder` inputs (JSON, rebuilt on load) and finished recordings with their fixes. Schema changes are an append-only migration list keyed on SQLite's `user_version`.
+
+**SavedRecording**:
+A stored `RecordingSummary` without its fixes, which load separately (`Store::fixes`). Deleting a `Track` deletes its saved recordings.
 
 ### Track geometry
 

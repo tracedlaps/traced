@@ -15,6 +15,7 @@ use traced_core::{
 
 use crate::{
     gps::wire::Permission,
+    storage,
     tracks::{mock_speed_kmh, PRESETS},
 };
 #[cfg(target_os = "android")]
@@ -112,7 +113,17 @@ impl RecorderCtx {
             return;
         };
         self.keep_screen_on(false);
-        spawn_forever(async move { self.last_summary.set(Some(recording.stop().await)) });
+        spawn_forever(async move {
+            let summary = recording.stop().await;
+            // A long recording's fixes take a moment to write: keep that off the UI thread.
+            let summary = tokio::task::spawn_blocking(move || {
+                storage::save(&summary);
+                summary
+            })
+            .await
+            .expect("save task panicked");
+            self.last_summary.set(Some(summary));
+        });
     }
 }
 

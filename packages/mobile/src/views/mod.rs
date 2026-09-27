@@ -1,8 +1,10 @@
+mod history;
 mod live;
 mod results;
 mod setup;
 mod track_map;
 
+pub use history::{History, SavedResults};
 pub use live::Live;
 pub use results::Results;
 pub use setup::Setup;
