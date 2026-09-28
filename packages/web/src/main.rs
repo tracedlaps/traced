@@ -5,8 +5,8 @@ mod demo;
 const ICON: Asset = asset!("/assets/icon.svg");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 const FONTS: &str = "https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&display=swap";
-const ISSUES: &str = "https://github.com/tracedlabs/tracedlabs/issues";
-const APK: &str = "https://github.com/tracedlabs/tracedlabs/releases/latest/download/traced.apk";
+const ISSUES: &str = "https://github.com/tracedlaps/tracedlaps/issues";
+const APK: &str = "https://github.com/tracedlaps/tracedlaps/releases/latest/download/traced.apk";
 
 const FEATURES: [(&str, &str, &str); 6] = [
     ("accent", "Live delta", "Your gap to the all-time best lap, updated as you drive, green when you're ahead and red when you're not."),
