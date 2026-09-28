@@ -16,6 +16,9 @@ fi
 # R8 would strip the plugin classes Rust looks up by name over JNI; release lint crashes on JDK 25
 sed -i -e 's/isMinifyEnabled = true/isMinifyEnabled = false/' \
     -e '0,/^android {/s//android {\n    lint { checkReleaseBuilds = false }/' "$app/app/build.gradle.kts"
+# versionCode must grow each release or Android won't treat it as an update: 0.2.0 -> 200
+IFS=. read -r maj min pat < <(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+sed -i "s/versionCode = .*/versionCode = $((maj * 10000 + min * 100 + pat))/" "$app/app/build.gradle.kts"
 (cd "$app" && ./gradlew -q assembleRelease)
 key=~/.config/traced
 out=$app/app/build/outputs/apk/release
