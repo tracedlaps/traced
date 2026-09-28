@@ -6,7 +6,7 @@ import dev.traced.gps.GpsPlugin
 import dev.traced.storage.StoragePlugin
 
 // dx generates BuildConfig in the package named by Dioxus.toml's `bundle.identifier`.
-typealias BuildConfig = dev.traced.app.BuildConfig
+typealias BuildConfig = com.tracedlaps.app.BuildConfig
 
 // Replaces dx's generated MainActivity (Dioxus.toml `application.android_main_activity`).
 // `registerForActivityResult` must run before the activity starts, so the location-permission

@@ -7,7 +7,7 @@ description = "Traced uses GPS for live speed and lap timing"
 precision = "fine"
 
 [bundle]
-identifier = "dev.traced.app"
+identifier = "com.tracedlaps.app"
 
 [android]
 min_sdk = 26
