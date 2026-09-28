@@ -5,8 +5,8 @@ mod demo;
 const ICON: Asset = asset!("/assets/icon.svg");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 const FONTS: &str = "https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&display=swap";
-const REPO: &str = "https://github.com/PedroS235/traced";
-const APK: &str = "https://github.com/PedroS235/traced/releases/latest/download/traced.apk";
+const ISSUES: &str = "https://github.com/tracedlabs/tracedlabs/issues";
+const APK: &str = "https://github.com/tracedlabs/tracedlabs/releases/latest/download/traced.apk";
 
 const FEATURES: [(&str, &str, &str); 6] = [
     ("accent", "Live delta", "Your gap to the all-time best lap, updated as you drive, green when you're ahead and red when you're not."),
@@ -42,7 +42,6 @@ fn App() -> Element {
                 nav {
                     a { href: "#features", "Features" }
                     a { href: "#install", "Install" }
-                    a { href: REPO, "Source" }
                 }
             }
 
@@ -91,7 +90,7 @@ fn App() -> Element {
                         h2 { "Not on the Play Store, yet" }
                         p { class: "intro",
                             "Traced ships as an APK. Android asks once before installing an app from outside the store. It's in beta, so expect rough edges: found a bug or missing something? "
-                            a { href: "{REPO}/issues", "Open an issue" } "."
+                            a { href: ISSUES, "Open an issue" } "."
                         }
                         Download {}
                     }
@@ -115,7 +114,6 @@ fn App() -> Element {
 
             footer {
                 span { "Traced · made with Rust and Dioxus" }
-                a { href: REPO, "github.com/PedroS235/traced" }
             }
         }
     }

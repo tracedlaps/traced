@@ -8,5 +8,6 @@ dx serve --package web --platform web
 dx bundle --package web --platform web   # static files to host anywhere
 ```
 
-The download buttons point at `releases/latest/download/traced.apk` on GitHub, so each release
-needs its APK attached under that name.
+Published with `scripts/publish-web.sh` to the public `tracedlabs/tracedlabs` repo, which GitHub
+Pages serves at tracedlaps.com. The download button points at that repo's
+`releases/latest/download/traced.apk`, so each release needs its APK attached under that name.
