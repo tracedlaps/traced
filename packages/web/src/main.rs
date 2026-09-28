@@ -48,7 +48,7 @@ fn App() -> Element {
 
             div { class: "hero", id: "top",
                 div {
-                    p { class: "label", "GPS lap timer for Android" }
+                    p { class: "label", "GPS lap timer for Android · Open beta" }
                     h1 { "Race your " em { "best lap." } " Every lap." }
                     p { class: "lede",
                         "Draw a circuit or a downhill run on the map, set your sectors, and go. Traced times every lap from your phone's GPS and shows "
@@ -58,7 +58,8 @@ fn App() -> Element {
                     div { class: "get",
                         Download {}
                         dl { class: "meta",
-                            dt { "Price" } dd { "Free, no account" }
+                            dt { "Status" } dd { "Open beta, free to test" }
+                            dt { "Later" } dd { "One-time Pro unlock" }
                             dt { "Languages" } dd { "English, Português" }
                         }
                     }
@@ -88,7 +89,10 @@ fn App() -> Element {
                     div {
                         p { class: "label", "Installing" }
                         h2 { "Not on the Play Store, yet" }
-                        p { class: "intro", "Traced ships as an APK. Android asks once before installing an app from outside the store." }
+                        p { class: "intro",
+                            "Traced ships as an APK. Android asks once before installing an app from outside the store. It's in beta, so expect rough edges: found a bug or missing something? "
+                            a { href: "{REPO}/issues", "Open an issue" } "."
+                        }
                         Download {}
                     }
                     ol { class: "steps",
@@ -122,7 +126,7 @@ fn Download() -> Element {
     rsx! {
         a { class: "apk", href: APK,
             svg { view_box: "0 0 24 24", path { d: "M12 3v12M7 10l5 5 5-5M5 20h14" } }
-            span { "Download the APK" small { "v0.1.0 · Android 8.0+" } }
+            span { "Download the APK" small { "v0.1.0 beta · Android 8.0+" } }
         }
     }
 }
