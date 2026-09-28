@@ -105,12 +105,19 @@ pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
     let id = initial.uuid;
     let original = use_hook(|| (initial.waypoints.len() >= 2).then(|| initial.builder(false)));
     let mut draft = use_signal(|| initial);
-    // Earlier drafts, for undo; the name isn't undone.
+    // Earlier drafts, for undo; the name and tags aren't undone.
     let mut history = use_signal(Vec::<Draft>::new);
     let mut mode = use_signal(|| Mode::Draw);
     let mut selected = use_signal(|| None::<usize>);
     let mut error = use_signal(|| None::<String>);
     let mut confirm_delete = use_signal(|| None::<usize>);
+    let mut tag = use_signal(String::new);
+    // Other tracks' tags, to reuse rather than retype.
+    let suggestions = use_memo(move || {
+        let d = draft.read();
+        let all: BTreeSet<_> = tracks.read().iter().flat_map(|t| t.tags.clone()).collect();
+        all.into_iter().filter(|t| !d.tags.contains(t)).collect::<Vec<_>>()
+    });
 
     // Length and sectors, or why the draft doesn't build; and the track drawn over the map.
     let preview = use_memo(move || {
@@ -165,6 +172,7 @@ pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
         commit(d);
     };
     let save = move |_| {
+        draft.write().add_tags(&tag.replace(String::new()));
         let track = draft.read().builder(false);
         let Ok(built) = track.clone().build() else {
             return;
@@ -231,8 +239,8 @@ pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
                         disabled: history.read().is_empty(),
                         onclick: move |_| {
                             if let Some(prev) = history.write().pop() {
-                                let name = draft.read().name.clone();
-                                draft.set(Draft { name, ..prev });
+                                let Draft { name, tags, .. } = draft();
+                                draft.set(Draft { name, tags, ..prev });
                                 selected.set(None);
                             }
                         },
@@ -254,6 +262,33 @@ pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
                 label { class: "field",
                     {t!("name")}
                     input { r#type: "text", value: "{draft.read().name}", oninput: move |e| draft.write().name = e.value() }
+                }
+                label { class: "field",
+                    {t!("tags")}
+                    input {
+                        r#type: "text",
+                        placeholder: t!("tags-hint"),
+                        value: "{tag}",
+                        // A comma, Enter or leaving the field adds what's typed.
+                        oninput: move |e| match e.value().rsplit_once(',') {
+                            Some((done, rest)) => {
+                                draft.write().add_tags(done);
+                                tag.set(rest.into());
+                            }
+                            None => tag.set(e.value()),
+                        },
+                        onchange: move |_| draft.write().add_tags(&tag.replace(String::new())),
+                    }
+                }
+                if !draft.read().tags.is_empty() || !suggestions.read().is_empty() {
+                    div { class: "tags",
+                        for (i , t) in draft.read().tags.iter().enumerate() {
+                            button { class: "tag", onclick: move |_| _ = draft.write().tags.remove(i), "{t} ×" }
+                        }
+                        for t in suggestions() {
+                            button { class: "tag suggestion", onclick: move |_| draft.write().add_tags(&t), "+ {t}" }
+                        }
+                    }
                 }
                 label { class: "check",
                     input {
@@ -417,6 +452,15 @@ impl Draft {
         }
     }
 
+    /// Comma-separated `tags`, trimmed and lowercased, skipping blanks and ones it has.
+    fn add_tags(&mut self, tags: &str) {
+        for t in tags.split(',').map(|t| t.trim().to_lowercase()) {
+            if !t.is_empty() && !self.tags.contains(&t) {
+                self.tags.push(t);
+            }
+        }
+    }
+
     fn is_boundary(&self, i: usize) -> bool {
         i == self.start || !self.closed && i == self.finish
     }
@@ -509,6 +553,14 @@ mod tests {
         draft.place(Mode::Sector, 3);
         draft.place(Mode::Start, 3);
         assert!(!draft.sectors.contains(&3));
+    }
+
+    #[test]
+    fn tags_are_trimmed_lowercased_and_unique() {
+        let mut draft = Draft::default();
+        draft.add_tags(" Karting, ,trike");
+        draft.add_tags("karting,Rental ");
+        assert_eq!(draft.tags, ["karting", "trike", "rental"]);
     }
 
     fn p(i: usize) -> Waypoint {
