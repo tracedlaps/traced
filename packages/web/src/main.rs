@@ -130,9 +130,6 @@ fn Download() -> Element {
 #[component]
 fn Logo() -> Element {
     rsx! {
-        svg { view_box: "0 0 28 28",
-            path { d: "M6 21C6 9 22 9 22 15S12 20 12 13", fill: "none", stroke: "var(--accent)", stroke_width: "3.2", stroke_linecap: "round" }
-            circle { cx: "12", cy: "13", r: "3", fill: "var(--fg)" }
-        }
+        img { src: ICON, alt: "" }
     }
 }
