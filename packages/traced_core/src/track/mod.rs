@@ -17,6 +17,8 @@ static EARTH_RADIUS: f64 = 6_371_000.0;
 pub struct Track {
     pub uuid: Uuid,
     pub name: String,
+    /// Free-form labels, e.g. the kind of vehicle ("karting", "speedtrike").
+    pub tags: Vec<String>,
     pub boundary: Boundary,
     pub waypoints: Vec<Waypoint>,
     polyline: Polyline,
@@ -33,6 +35,7 @@ impl Track {
         TrackBuilder {
             uuid: Uuid::new_v4(),
             name: name.into(),
+            tags: Vec::new(),
             shape,
             waypoints: Vec::new(),
             sector_placements: Vec::new(),
@@ -130,6 +133,8 @@ pub enum Boundary {
 pub struct TrackBuilder {
     uuid: Uuid,
     name: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tags: Vec<String>,
     shape: TrackShape,
     waypoints: Vec<Waypoint>,
     sector_placements: Vec<Waypoint>,
@@ -142,6 +147,10 @@ impl TrackBuilder {
 
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn tag_list(&self) -> &[String] {
+        &self.tags
     }
 
     pub fn shape(&self) -> TrackShape {
@@ -165,6 +174,11 @@ impl TrackBuilder {
     /// Keeps a track's identity across rebuilds; `Track::builder` picks a random one.
     pub fn with_uuid(mut self, uuid: Uuid) -> Self {
         self.uuid = uuid;
+        self
+    }
+
+    pub fn tags<S: Into<String>>(mut self, tags: impl IntoIterator<Item = S>) -> Self {
+        self.tags = tags.into_iter().map(Into::into).collect();
         self
     }
 
@@ -239,6 +253,7 @@ impl TrackBuilder {
         Ok(Track {
             uuid: self.uuid,
             name: self.name,
+            tags: self.tags,
             boundary,
             waypoints: self.waypoints,
             polyline,

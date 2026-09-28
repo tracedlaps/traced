@@ -20,7 +20,7 @@ use traced_core::{
     track::{Track, TrackBuilder},
 };
 
-use crate::tracks::PRESETS;
+use crate::tracks::{PRESETS, PRESETS_VERSION};
 
 #[cfg(target_os = "android")]
 mod plugin {
@@ -92,6 +92,15 @@ fn open() -> Result<Store, Box<dyn Error>> {
     let store = Store::open(dir.join("traced.db"))?;
     if store.tracks()?.is_empty() {
         PRESETS.iter().try_for_each(|p| store.put_track(&p.track))?;
+    }
+    // A preset an older release seeded takes this one's name and tags, unless its gates were moved.
+    if store.setting("presets")?.as_deref() != Some(PRESETS_VERSION) {
+        for p in PRESETS.iter() {
+            if store.track(p.track.uuid())?.is_some_and(|t| t.same_geometry(&p.track)) {
+                store.put_track(&p.track)?;
+            }
+        }
+        store.put_setting("presets", PRESETS_VERSION)?;
     }
     if let Err(e) = store.recover() {
         warn!("recover recordings: {e}");

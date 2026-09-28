@@ -470,7 +470,7 @@ mod tests {
     fn tracks_survive_reopening_with_their_uuid() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("traced.db");
-        let track = sprint("Sprint");
+        let track = sprint("Sprint").tags(["trike"]);
         Store::open(&path).unwrap().put_track(&track).unwrap();
 
         let store = Store::open(&path).unwrap();
@@ -480,7 +480,20 @@ mod tests {
             (tracks[0].uuid, tracks[0].name.as_str()),
             (track.uuid(), "Sprint")
         );
+        assert_eq!(tracks[0].tags, ["trike"]);
         assert!((tracks[0].length() - 111.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn specs_saved_before_tags_load_untagged() {
+        let store = Store::open(":memory:").unwrap();
+        let spec = serde_json::to_string(&sprint("Old")).unwrap(); // untagged: no "tags" key
+        assert!(!spec.contains("tags"));
+        store
+            .db
+            .execute("INSERT INTO tracks VALUES ('00000000-0000-0000-0000-000000000001', ?1)", [spec])
+            .unwrap();
+        assert!(store.tracks().unwrap()[0].tags.is_empty());
     }
 
     #[test]

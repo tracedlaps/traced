@@ -350,6 +350,8 @@ pub(super) struct Draft {
     /// A saved track's; `None` until an import is first saved.
     uuid: Option<Uuid>,
     name: String,
+    /// Not editable yet, but kept through a save.
+    tags: Vec<String>,
     closed: bool,
     start: usize,
     /// Unused while `closed`.
@@ -384,6 +386,7 @@ impl Draft {
         Self {
             uuid: Some(spec.uuid()),
             name: spec.name().into(),
+            tags: spec.tag_list().to_vec(),
             closed,
             start,
             finish,
@@ -403,7 +406,7 @@ impl Draft {
             true => TrackShape::Closed { gate: w[start] },
             false => TrackShape::Open { start: w[start], finish: w[finish] },
         };
-        let track = Track::builder(self.name.trim(), shape).waypoints(w.clone());
+        let track = Track::builder(self.name.trim(), shape).tags(self.tags.clone()).waypoints(w.clone());
         let track = match self.uuid {
             Some(uuid) => track.with_uuid(uuid),
             None => track,
@@ -483,17 +486,17 @@ mod tests {
 
     #[test]
     fn specs_round_trip_through_a_draft() {
-        // All but the Lisbon loop place every gate on a waypoint.
-        for p in &PRESETS[..3] {
+        for p in PRESETS.iter() {
             let draft = Draft::from_spec(&p.track);
             assert!(draft.builder(false).same_geometry(&p.track), "{}", p.track.name());
             assert_eq!(draft.builder(false).uuid(), p.track.uuid());
+            assert_eq!(draft.builder(false).tag_list(), p.track.tag_list());
         }
     }
 
     #[test]
     fn moving_the_start_off_the_end_shortens_the_run() {
-        let spec = &PRESETS[2].track; // Luxembourg Sprint, Open
+        let spec = &PRESETS[1].track; // Descida de Provisende, Open
         let mut draft = Draft::from_spec(spec);
         let full = draft.builder(false).build().unwrap().sectors().map(|s| s.length).sum::<f64>();
         draft.place(Mode::Start, 1);
