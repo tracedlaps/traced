@@ -11,17 +11,18 @@ use traced_core::{
 use uuid::Uuid;
 
 use super::{
-    kmh, lap_time,
+    lap_time,
     map::{Map, View},
     results::Report,
     track_map::{Layout, TrackSvg},
 };
-use crate::{i18n::local_date, recorder::RecorderCtx, storage, Route};
+use crate::{i18n::local_date, recorder::RecorderCtx, storage, units::Units, Route};
 
 #[component]
 pub fn History() -> Element {
     let tracks = use_context::<Signal<Vec<Arc<Track>>>>();
     let recordings = storage::recordings();
+    let units = Units::current();
 
     rsx! {
         main {
@@ -35,7 +36,7 @@ pub fn History() -> Element {
                         Link { to: Route::SavedResults { id: r.id },
                             {track_name(&tracks.read(), r.session.as_ref())}
                             small { "{when(r.started_at)} · {outcome(&recordings, r.session.as_ref())}" }
-                            small { "{r.speedometer.distance_m / 1000.0:.2} km · " {t!("stat-top")} " {kmh(r.speedometer.top_speed_ms)} km/h" }
+                            small { "{units.distance(r.speedometer.distance_m)} · " {t!("stat-top")} " {units.speed(r.speedometer.top_speed_ms)}" }
                             if r.interrupted {
                                 small { class: "interrupted", {t!("interrupted")} }
                             }

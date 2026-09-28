@@ -2,8 +2,8 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 use traced_core::{imu::GForces, speedometer::SpeedometerSnapshot, timing::best_lap, track::Session};
 
-use super::{kmh, lap_time, Delta};
-use crate::{recorder::RecorderCtx, storage};
+use super::{lap_time, Delta};
+use crate::{recorder::RecorderCtx, storage, units::Units};
 
 #[component]
 pub fn Results() -> Element {
@@ -33,11 +33,12 @@ pub fn Report(speed: SpeedometerSnapshot, session: Option<Session>, g: Option<GF
     let laps = session.as_ref().map_or(&[][..], Session::laps);
     let recordings = storage::recordings();
     let best = session.as_ref().and_then(|s| best_lap(&recordings, s.track_id)).map(|(_, lap)| lap);
+    let units = Units::current();
     rsx! {
         dl { class: "stats",
-            dt { {t!("stat-top")} } dd { "{kmh(speed.top_speed_ms)} km/h" }
-            dt { {t!("stat-avg")} } dd { "{kmh(speed.average_speed_ms)} km/h" }
-            dt { {t!("stat-distance")} } dd { "{speed.distance_m / 1000.0:.2} km" }
+            dt { {t!("stat-top")} } dd { "{units.speed(speed.top_speed_ms)}" }
+            dt { {t!("stat-avg")} } dd { "{units.speed(speed.average_speed_ms)}" }
+            dt { {t!("stat-distance")} } dd { "{units.distance(speed.distance_m)}" }
             dt { {t!("stat-time")} } dd { {lap_time(speed.elapsed.as_secs_f64())} }
             if let Some(p) = g.as_ref().map(|g| g.peaks) {
                 dt { {t!("g-braking")} } dd { "{p.braking:.2} g" }

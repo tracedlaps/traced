@@ -6,6 +6,7 @@ mod live;
 mod map;
 mod record;
 mod results;
+mod settings;
 mod shell;
 mod track_map;
 
@@ -15,6 +16,7 @@ pub use history::{History, SavedResults};
 pub use live::Live;
 pub use record::{Speedometer, Tracks};
 pub use results::Results;
+pub use settings::Settings;
 pub use shell::Shell;
 use chrono::TimeDelta;
 use dioxus::prelude::*;
@@ -23,6 +25,8 @@ use traced_core::{
     gps::{GpsError, GpsStatus},
     track::{import::ImportError, Track, TrackBuildError},
 };
+
+use crate::units::Units;
 
 /// Why the GPS couldn't start, for the user.
 fn refusal(e: GpsError) -> String {
@@ -38,8 +42,8 @@ fn refusal(e: GpsError) -> String {
 fn track_error(e: &TrackBuildError) -> String {
     match *e {
         TrackBuildError::TooFewWaypoints => t!("too-few-waypoints"),
-        TrackBuildError::PlacementOffTrack { distance } => t!("placement-off-track", distance: format!("{distance:.0}")),
-        TrackBuildError::PlacementBeyondTrack { overshoot } => t!("placement-beyond-track", distance: format!("{overshoot:.0}")),
+        TrackBuildError::PlacementOffTrack { distance } => t!("placement-off-track", distance: Units::current().length(distance)),
+        TrackBuildError::PlacementBeyondTrack { overshoot } => t!("placement-beyond-track", distance: Units::current().length(overshoot)),
         TrackBuildError::FinishBeforeStart => t!("finish-before-start"),
         TrackBuildError::SectorOutsideTrack { .. } => t!("sector-outside"),
     }
@@ -74,17 +78,13 @@ fn timed_m(track: &Track) -> f64 {
     track.sectors().map(|s| s.length).sum()
 }
 
-fn kmh(speed_ms: impl Into<f64>) -> String {
-    format!("{:.0}", speed_ms.into() * 3.6)
-}
-
 fn gps_status(status: Option<GpsStatus>) -> String {
     match status {
         None | Some(GpsStatus::Disconnected) => t!("gps-off"),
         Some(GpsStatus::Connecting) => t!("gps-connecting"),
         Some(GpsStatus::Searching) => t!("gps-no-fix"),
         Some(GpsStatus::Fixed { satellites, accuracy_m, source }) => {
-            t!("gps-fix", source: format!("{source:?}"), satellites: satellites, accuracy: format!("{accuracy_m:.0}"))
+            t!("gps-fix", source: format!("{source:?}"), satellites: satellites, accuracy: Units::current().length(accuracy_m))
         }
     }
 }

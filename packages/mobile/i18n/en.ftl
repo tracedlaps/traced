@@ -23,6 +23,7 @@ tab-history = History
 tab-tracks = Tracks
 tab-speed = Speed
 tab-editor = Editor
+tab-settings = Settings
 back-to-live = Recording · back to live
 
 ## GPS
@@ -32,7 +33,7 @@ gps-no-fix = No GPS fix
 gps-fix = GPS fix · { $source } · { $satellites ->
     [one] 1 satellite
    *[other] { $satellites } satellites
-} · ±{ $accuracy } m
+} · ±{ $accuracy }
 gps-permission-denied = Location permission denied. It's needed to record.
 gps-location-disabled = Location is turned off. Turn it on to record.
 gps-unavailable = The GPS isn't available: { $detail }
@@ -47,7 +48,7 @@ no-tracks = No tracks yet.
 import-a-track = Import a track
 edit-track = Edit track
 speedometer = Speedometer
-speedometer-idle = km/h · top, average and distance, no track
+speedometer-idle = { $unit } · top, average and distance, no track
 developer = Developer
 mock-drive = Mock drive instead of the GPS
 force-location-manager = LocationManager instead of Fused
@@ -127,8 +128,8 @@ delete-failed = Couldn't delete the track.
 
 ## Track errors
 too-few-waypoints = Tap the map to add at least two waypoints.
-placement-off-track = A gate is { $distance } m from the track, too far to place on it.
-placement-beyond-track = A gate is { $distance } m past the end of the track. Extend the waypoints to cover it.
+placement-off-track = A gate is { $distance } from the track, too far to place on it.
+placement-beyond-track = A gate is { $distance } past the end of the track. Extend the waypoints to cover it.
 finish-before-start = The finish must come after the start along the waypoints.
 sector-outside = A sector gate isn't between the start and the finish.
 import-unrecognised = Not a CSV with latitude and longitude columns, a GPX or a KML file.
@@ -145,6 +146,20 @@ layer-streets = Streets
 layer-satellite = Satellite
 my-location = My location
 fit-track = Fit track
+
+## Settings
+settings = Settings
+units = Units
+units-metric = Metric
+units-imperial = Imperial
+theme = Theme
+theme-system = System
+theme-light = Light
+theme-dark = Dark
+language = Language
+language-system = System
+language-en = English
+language-pt = Português
 
 ## Backup
 backup = Backup

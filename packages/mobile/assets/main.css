@@ -3,9 +3,11 @@
   --accent: #ea580c; --stop: #dc2626; --ahead: #16a34a;
   --sector-0: #2563eb; --sector-1: #0891b2; --sector-2: #4f46e5; --sector-3: #64748b; /* identity only: green, red, purple, yellow mean pace */
 }
+/* data-theme (Settings) overrides the system's. */
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #0c0a09; --fg: #fafaf9; --muted: #a8a29e; --line: #292524; }
+  :root:not([data-theme=light]) { --bg: #0c0a09; --fg: #fafaf9; --muted: #a8a29e; --line: #292524; }
 }
+:root[data-theme=dark] { --bg: #0c0a09; --fg: #fafaf9; --muted: #a8a29e; --line: #292524; }
 * { box-sizing: border-box; }
 /* The app is exactly one screen tall; only .scroll areas scroll. */
 html, body, #main { height: 100%; overflow: hidden; }

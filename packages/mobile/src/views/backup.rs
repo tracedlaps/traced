@@ -4,9 +4,9 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 use traced_core::track::Track;
 
-use crate::{recorder::RecorderCtx, storage};
+use crate::{prefs, recorder::RecorderCtx, storage};
 
-/// Export everything to a file, or replace everything with one.
+/// Export everything (tracks, recordings, settings) to a file, or replace everything with one.
 #[component]
 pub fn Backup() -> Element {
     let mut tracks = use_context::<Signal<Vec<Arc<Track>>>>();
@@ -28,6 +28,7 @@ pub fn Backup() -> Element {
         match storage::restore_backup().await {
             Ok(true) => {
                 tracks.set(storage::load_tracks());
+                prefs::reload();
                 status.set(Some(Ok("backup-restored")));
             }
             Ok(false) => {}

@@ -1,14 +1,19 @@
-//! Translations: one Fluent file per language in `i18n/`, chosen by the device's locale.
+//! Translations: one Fluent file per language in `i18n/`, the device's unless another is chosen.
 
 use chrono::{DateTime, Local, Utc};
 use dioxus_i18n::prelude::*;
 use unic_langid::{langid, LanguageIdentifier};
 
-/// The device's language, falling back to English for any language or key not translated.
+use crate::prefs::{Choice, Language};
+
+pub fn device_language() -> LanguageIdentifier {
+    sys_locale::get_locale().and_then(|l| l.parse().ok()).unwrap_or(langid!("en"))
+}
+
+/// The chosen language, falling back to English for any language or key not translated.
 pub fn use_translations() {
     use_init_i18n(|| {
-        let device = sys_locale::get_locale().and_then(|l| l.parse::<LanguageIdentifier>().ok());
-        I18nConfig::new(device.unwrap_or(langid!("en")))
+        I18nConfig::new(Language::load().id())
             .with_fallback(langid!("en"))
             .with_locale((langid!("en"), include_str!("../i18n/en.ftl")))
             .with_locale((langid!("pt"), include_str!("../i18n/pt.ftl")))

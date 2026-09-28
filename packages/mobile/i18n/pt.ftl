@@ -23,6 +23,7 @@ tab-history = Histórico
 tab-tracks = Pistas
 tab-speed = Velocidade
 tab-editor = Editor
+tab-settings = Definições
 back-to-live = A gravar · voltar ao direto
 
 ## GPS
@@ -32,7 +33,7 @@ gps-no-fix = Sem sinal GPS
 gps-fix = Sinal GPS · { $source } · { $satellites ->
     [one] 1 satélite
    *[other] { $satellites } satélites
-} · ±{ $accuracy } m
+} · ±{ $accuracy }
 gps-permission-denied = Permissão de localização recusada. É necessária para gravar.
 gps-location-disabled = A localização está desligada. Ligue-a para gravar.
 gps-unavailable = O GPS não está disponível: { $detail }
@@ -47,7 +48,7 @@ no-tracks = Ainda não há pistas.
 import-a-track = Importar uma pista
 edit-track = Editar pista
 speedometer = Velocímetro
-speedometer-idle = km/h · máxima, média e distância, sem pista
+speedometer-idle = { $unit } · máxima, média e distância, sem pista
 developer = Programador
 mock-drive = Condução simulada em vez do GPS
 force-location-manager = LocationManager em vez do Fused
@@ -127,8 +128,8 @@ delete-failed = Não foi possível apagar a pista.
 
 ## Track errors
 too-few-waypoints = Toque no mapa para adicionar pelo menos dois pontos.
-placement-off-track = Uma linha está a { $distance } m da pista, longe demais para a colocar.
-placement-beyond-track = Uma linha está { $distance } m além do fim da pista. Estenda os pontos até ela.
+placement-off-track = Uma linha está a { $distance } da pista, longe demais para a colocar.
+placement-beyond-track = Uma linha está { $distance } além do fim da pista. Estenda os pontos até ela.
 finish-before-start = A chegada tem de vir depois da partida ao longo dos pontos.
 sector-outside = Uma linha de setor não está entre a partida e a chegada.
 import-unrecognised = Não é um CSV com colunas de latitude e longitude, um GPX ou um KML.
@@ -145,6 +146,20 @@ layer-streets = Ruas
 layer-satellite = Satélite
 my-location = A minha localização
 fit-track = Ajustar à pista
+
+## Settings
+settings = Definições
+units = Unidades
+units-metric = Métrico
+units-imperial = Imperial
+theme = Tema
+theme-system = Sistema
+theme-light = Claro
+theme-dark = Escuro
+language = Idioma
+language-system = Sistema
+language-en = English
+language-pt = Português
 
 ## Backup
 backup = Cópia de segurança

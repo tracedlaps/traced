@@ -131,6 +131,14 @@ pub fn delete_track(id: Uuid) -> Option<()> {
     with_store("delete track", |s| s.delete_track(id))
 }
 
+pub fn setting(key: &str) -> Option<String> {
+    with_store("load setting", |s| s.setting(key)).flatten()
+}
+
+pub fn put_setting(key: &str, value: &str) -> Option<()> {
+    with_store("save setting", |s| s.put_setting(key, value))
+}
+
 /// Saves each fix and sample as it arrives, so a crash loses at most the one being written.
 struct Journal(Uuid);
 

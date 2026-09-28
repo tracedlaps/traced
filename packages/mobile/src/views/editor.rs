@@ -6,12 +6,11 @@ use traced_core::track::{import, Track, TrackBuilder, TrackShape, Waypoint};
 use uuid::Uuid;
 
 use super::{
-    backup::Backup,
     map::{LatLng, Map, MapEvent, Overlay, View},
     import_error, timed_m, track_error,
     track_map::Layout,
 };
-use crate::{recorder::RecorderCtx, storage, Route};
+use crate::{recorder::RecorderCtx, storage, units::Units, Route};
 
 /// The Editor tab: create a track on the map, import another app's export, or pick a saved one.
 #[component]
@@ -63,7 +62,6 @@ pub fn Import() -> Element {
                         }
                     }
                 }
-                Backup {}
             }
         }
     }
@@ -123,7 +121,7 @@ pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
         let built = d.builder(false).build();
         let summary = built
             .as_ref()
-            .map(|t| format!("{:.0} m · {}", timed_m(t), t!("sector-count", count: t.sectors().count())))
+            .map(|t| format!("{} · {}", Units::current().length(timed_m(t)), t!("sector-count", count: t.sectors().count())))
             .map_err(track_error);
         // Still drawn when a placement is what fails, just with gates on the ends only.
         let track = built.ok().or_else(|| d.builder(true).build().ok());

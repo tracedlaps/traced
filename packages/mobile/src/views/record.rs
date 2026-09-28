@@ -5,7 +5,7 @@ use dioxus_i18n::t;
 use traced_core::{timing::best_lap, track::Track};
 
 use super::{gps_status, lap_time, refusal, timed_m};
-use crate::{gps::wire::Permission, recorder::RecorderCtx, storage, Route};
+use crate::{gps::wire::Permission, recorder::RecorderCtx, storage, units::Units, Route};
 
 #[component]
 pub fn Tracks() -> Element {
@@ -33,7 +33,7 @@ pub fn Tracks() -> Element {
                         onclick: move |_| selected.set(i),
                         "{track.name}"
                         small {
-                            "{timed_m(track):.0} m · " {t!("sector-count", count: track.sectors().count())}
+                            "{Units::current().length(timed_m(track))} · " {t!("sector-count", count: track.sectors().count())}
                             if let Some((_, pb)) = best_lap(&recordings, track.uuid) {
                                 " · " {t!("pb")} " {lap_time(pb.duration().as_seconds_f64())}"
                             }
@@ -56,7 +56,7 @@ pub fn Speedometer() -> Element {
             h1 { {t!("speedometer")} }
             div { class: "speed idle scroll",
                 span { "0" }
-                small { {t!("speedometer-idle")} }
+                small { {t!("speedometer-idle", unit: Units::current().speed_unit())} }
             }
             StartPanel { track: None }
         }
@@ -70,7 +70,6 @@ fn StartPanel(track: Option<usize>) -> Element {
     let tracks = use_context::<Signal<Vec<Arc<Track>>>>();
     // Why the last Start didn't record.
     let mut refused = use_signal(|| None::<String>);
-    let (mut use_mock, mut force_lm) = (ctx.use_mock, ctx.force_location_manager);
 
     rsx! {
         section { class: "gps",
@@ -86,19 +85,6 @@ fn StartPanel(track: Option<usize>) -> Element {
             }
             if let Some(why) = refused() {
                 p { class: "error", "{why}" }
-            }
-            if cfg!(target_os = "android") {
-                details {
-                    summary { {t!("developer")} }
-                    label {
-                        input { r#type: "checkbox", checked: use_mock(), onchange: move |e| use_mock.set(e.checked()) }
-                        {t!("mock-drive")}
-                    }
-                    label {
-                        input { r#type: "checkbox", checked: force_lm(), onchange: move |e| force_lm.set(e.checked()) }
-                        {t!("force-location-manager")}
-                    }
-                }
             }
         }
         button {

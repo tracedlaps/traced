@@ -7,7 +7,7 @@ use super::{
     map::{street_at, Map, View},
     refusal,
 };
-use crate::{gps::wire::Permission, recorder::RecorderCtx, Route};
+use crate::{gps::wire::Permission, recorder::RecorderCtx, units::Units, Route};
 
 /// Trace a drive or walk on the map, then open it in the editor to place gates and save.
 /// Leaving the screen before Stop discards it.
@@ -76,7 +76,7 @@ pub fn RecordTrack() -> Element {
                         }
                     }
                 }
-                small { "{gps_status(*ctx.status.read())} · {distance:.0} m" }
+                small { "{gps_status(*ctx.status.read())} · {Units::current().length(distance)}" }
                 div { class: "row",
                     button {
                         disabled: stopping() || view.read().trace.len() < 2,

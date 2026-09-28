@@ -7,12 +7,12 @@ use dioxus_i18n::t;
 use traced_core::track::LiveStatus;
 
 use super::{
-    gps_status, kmh, lap_time,
+    gps_status, lap_time,
     map::{Map, View},
     track_map::TrackMap,
     Delta,
 };
-use crate::{recorder::RecorderCtx, Route};
+use crate::{recorder::RecorderCtx, units::Units, Route};
 
 #[component]
 pub fn Live() -> Element {
@@ -28,6 +28,7 @@ pub fn Live() -> Element {
     // The recording outlives its fix stream when a mock run ends; its signals are cleared then.
     let ended = ctx.speed.read().is_none();
     let speed = ctx.speed.read().unwrap_or_default();
+    let units = Units::current();
     let replaying = *ctx.replaying.read();
     let clock = ctx.recording.read().as_ref().map(|r| r.clock.clone()).unwrap_or_default();
 
@@ -35,15 +36,15 @@ pub fn Live() -> Element {
         main { class: "live",
             div { class: "speed-row",
                 div { class: "speed",
-                    span { "{kmh(speed.current_speed_ms)}" }
-                    small { "km/h" }
+                    span { "{units.speed_value(speed.current_speed_ms)}" }
+                    small { "{units.speed_unit()}" }
                 }
                 GDial {}
             }
             dl { class: "stats",
-                dt { {t!("stat-top")} } dd { "{kmh(speed.top_speed_ms)} km/h" }
-                dt { {t!("stat-avg")} } dd { "{kmh(speed.average_speed_ms)} km/h" }
-                dt { {t!("stat-distance")} } dd { "{speed.distance_m / 1000.0:.2} km" }
+                dt { {t!("stat-top")} } dd { "{units.speed(speed.top_speed_ms)}" }
+                dt { {t!("stat-avg")} } dd { "{units.speed(speed.average_speed_ms)}" }
+                dt { {t!("stat-distance")} } dd { "{units.distance(speed.distance_m)}" }
             }
             if ctx.track.read().is_none() && replaying.is_some() {
                 ReplayMap {}
