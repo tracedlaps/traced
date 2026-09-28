@@ -68,6 +68,8 @@ const MIGRATIONS: &[&str] = &[
     ) STRICT;
     CREATE INDEX imu_samples_by_recording ON imu_samples (recording_id, time_ms);
     ALTER TABLE recordings ADD COLUMN g TEXT; -- JSON `GForces`, with an accelerometer",
+    // User preferences, so they go with a backup.
+    "CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT",
 ];
 
 pub struct Store {
@@ -142,6 +144,22 @@ impl Store {
         }
         self.db.restore("main", path, None::<fn(Progress)>)?;
         migrate(&mut self.db)
+    }
+
+    /// The stored value of setting `key`, if it was ever set.
+    pub fn setting(&self, key: &str) -> Result<Option<String>, StoreError> {
+        Ok(self
+            .db
+            .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0))
+            .optional()?)
+    }
+
+    pub fn put_setting(&self, key: &str, value: &str) -> Result<(), StoreError> {
+        self.db.execute(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            [key, value],
+        )?;
+        Ok(())
     }
 
     /// Inserts or updates the track with `track`'s uuid. Refuses one that doesn't build.
@@ -463,6 +481,15 @@ mod tests {
             (track.uuid(), "Sprint")
         );
         assert!((tracks[0].length() - 111.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn settings_are_unset_until_put_then_overwritten() {
+        let store = Store::open(":memory:").unwrap();
+        assert_eq!(store.setting("units").unwrap(), None);
+        store.put_setting("units", "imperial").unwrap();
+        store.put_setting("units", "metric").unwrap();
+        assert_eq!(store.setting("units").unwrap().as_deref(), Some("metric"));
     }
 
     #[test]
