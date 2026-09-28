@@ -14,14 +14,14 @@ pub const G: f32 = 9.80665;
 const SMOOTHING_S: f32 = 0.2;
 /// At most one snapshot per this, however fast samples come.
 const PUBLISH_EVERY: Duration = Duration::from_millis(50);
-/// GPS speed changes at least this sharp (m/s²), at least this fast (m/s), over at most this
-/// gap, show which way is forward.
-const ALIGN_MIN_ACCEL: f32 = 1.5;
+/// GPS showing the vehicle accelerating at least this much (m/s², speed change and turn together),
+/// at least this fast (m/s), over at most this gap, shows which way is forward.
+const ALIGN_MIN_ACCEL: f32 = 1.0;
 const ALIGN_MIN_SPEED: f32 = 3.0;
 const ALIGN_MAX_GAP: Duration = Duration::from_secs(2);
-/// Weight of each such speed change in the forward estimate, so it follows a mount that moves.
+/// Weight of each such acceleration in the forward estimate, so it follows a mount that moves.
 const ALIGN_RATE: f32 = 0.2;
-/// Speed changes needed before the estimate is trusted.
+/// Accelerations needed before the estimate is trusted.
 const ALIGN_EVENTS: u32 = 3;
 /// Fixes less accurate than this (m) teach nothing.
 const MAX_ACCURACY_M: f32 = 25.0;
@@ -74,8 +74,10 @@ pub struct GForceSnapshot {
 }
 
 /// Turns device-frame samples into vehicle-frame g-forces, whatever way the phone is mounted:
-/// gravity gives down, and GPS speed changes give forward (the acceleration the phone felt
-/// while GPS saw the speed change is along the direction of travel).
+/// gravity gives down, and GPS gives forward. Between two fixes GPS knows the vehicle's
+/// acceleration in its own frame (speed change ahead, speed × turn rate to the side), and the
+/// phone felt that same acceleration in device axes; together they pin forward down. So braking,
+/// speeding up and cornering all teach it.
 pub struct GMeter {
     tx: watch::Sender<GForceSnapshot>,
     snapshot: GForceSnapshot,
@@ -85,6 +87,8 @@ pub struct GMeter {
     smooth: Vec3,
     /// Horizontal acceleration summed since the last fix, and how many samples.
     since_fix: (Vec3, u32),
+    /// Up, in device axes, from the latest sample.
+    up: Vec3,
     last_fix: Option<GPSFix>,
     /// Running forward estimate in device axes; not unit length.
     forward: Vec3,
@@ -103,6 +107,7 @@ impl GMeter {
             published: None,
             smooth: [0.0; 3],
             since_fix: ([0.0; 3], 0),
+            up: [0.0; 3],
             last_fix: None,
             forward: [0.0; 3],
             events: 0,
@@ -131,6 +136,7 @@ impl GMeter {
 impl FixConsumer for GMeter {
     fn on_sample(&mut self, s: ImuSample) {
         let Some(up) = unit(s.gravity) else { return };
+        self.up = up;
         let h = horizontal(s.accel, up);
         let dt = self.last_sample.replace(s.timestamp).map(|t| (s.timestamp - t).as_seconds_f32());
         let a = dt.map_or(1.0, |dt| 1.0 - (-dt.max(0.0) / SMOOTHING_S).exp());
@@ -161,13 +167,21 @@ impl FixConsumer for GMeter {
         if dt.is_zero() || dt > ALIGN_MAX_GAP || n == 0 || prev.speed_ms.min(fix.speed_ms) < ALIGN_MIN_SPEED {
             return;
         }
-        let dvdt = (fix.speed_ms - prev.speed_ms) / dt.as_secs_f32();
+        let dt = dt.as_secs_f32();
+        // The vehicle's acceleration as GPS saw it: ahead, and to the right (compass heading turns clockwise).
+        let turn = match (prev.heading_deg, fix.heading_deg) {
+            (Some(a), Some(b)) => ((b - a + 540.0).rem_euclid(360.0) - 180.0).to_radians(),
+            _ => 0.0,
+        };
+        let (ahead, right) = ((fix.speed_ms - prev.speed_ms) / dt, (prev.speed_ms + fix.speed_ms) / 2.0 * turn / dt);
+        let gps = ahead.hypot(right);
         let mean = scale(sum, 1.0 / n as f32);
         // The phone must have felt it too, or the samples and the fix are out of step.
-        if dvdt.abs() < ALIGN_MIN_ACCEL || norm(mean) < dvdt.abs() / 2.0 {
+        if gps < ALIGN_MIN_ACCEL || norm(mean) < gps / 2.0 {
             return;
         }
-        let seen = scale(mean, dvdt.signum() / norm(mean));
+        // mean = ahead·F + right·R with R = F × up, so ahead·mean − right·(mean × up) = gps²·F.
+        let Some(seen) = unit(sub(scale(mean, ahead), scale(cross(mean, self.up), right))) else { return };
         self.forward = add(scale(self.forward, 1.0 - ALIGN_RATE), scale(seen, ALIGN_RATE));
         self.events += 1;
     }
@@ -238,29 +252,36 @@ mod tests {
         meter: GMeter,
         mount: Mount,
         t_ms: i64,
+        speed: f32,
+        /// Compass heading (rad).
+        heading: f32,
     }
 
     impl Drive {
+        /// Starts at 20 m/s.
         fn new(mount: Mount) -> Self {
-            Self { meter: GMeter::new().0, mount, t_ms: 0 }
+            Self { meter: GMeter::new().0, mount, t_ms: 0, speed: 20.0, heading: 0.0 }
         }
 
-        /// One second at a constant acceleration, then the fix that ends it at `speed`.
-        fn second(&mut self, longitudinal: f32, lateral: f32, speed: f32) {
+        /// One second at a constant acceleration (m/s², right positive), then the fix that ends it.
+        fn second(&mut self, longitudinal: f32, lateral: f32) {
             for _ in 0..HZ {
                 self.t_ms += 1000 / HZ;
                 let at = DateTime::UNIX_EPOCH + chrono::Duration::milliseconds(self.t_ms);
                 self.meter.on_sample(self.mount.sample(at, longitudinal, lateral));
             }
-            self.meter.on_fix(fix(self.t_ms / 1000, speed));
+            let v = self.speed + longitudinal / 2.0;
+            (self.speed, self.heading) = (self.speed + longitudinal, self.heading + lateral / v);
+            let heading = Some(self.heading.to_degrees().rem_euclid(360.0));
+            self.meter.on_fix(GPSFix { heading_deg: heading, ..fix(self.t_ms / 1000, self.speed) });
         }
 
-        /// Speeds up then brakes `n` times, from 10 m/s.
+        /// Speeds up then brakes `n` times.
         fn learn(&mut self, n: usize) {
-            self.second(0.0, 0.0, 10.0);
+            self.second(0.0, 0.0);
             for _ in 0..n {
-                self.second(3.0, 0.0, 13.0);
-                self.second(-3.0, 0.0, 10.0);
+                self.second(3.0, 0.0);
+                self.second(-3.0, 0.0);
             }
         }
 
@@ -286,7 +307,7 @@ mod tests {
     #[test]
     fn unaligned_until_gps_shows_forward() {
         let mut d = Drive::new(Mount::new(0.0, 0.0, 0.0));
-        d.second(5.0, 5.0, 10.0);
+        d.second(5.0, 5.0);
         assert_eq!(d.g(), GForceSnapshot::default());
         d.learn(1);
         assert!(!d.g().aligned);
@@ -299,9 +320,9 @@ mod tests {
         // Landscape, leaning back, facing the driver.
         let mut d = Drive::new(Mount::new(std::f32::consts::PI, 1.2, std::f32::consts::FRAC_PI_2));
         d.learn(3);
-        d.second(0.0, 0.5 * G, 10.0);
+        d.second(0.0, 0.5 * G);
         assert!(close(d.g().lateral_g, 0.5) && close(d.g().longitudinal_g, 0.0), "{:?}", d.g());
-        d.second(-0.8 * G, -0.3 * G, 10.0);
+        d.second(-0.8 * G, -0.3 * G);
         assert!(close(d.g().longitudinal_g, -0.8) && close(d.g().lateral_g, -0.3), "{:?}", d.g());
         let p = d.g().peaks;
         assert!(close(p.braking, 0.8) && close(p.right, 0.5) && close(p.left, 0.3), "{p:?}");
@@ -313,22 +334,36 @@ mod tests {
         d.learn(3);
         d.mount = Mount::new(0.3 + std::f32::consts::FRAC_PI_2, 0.2, 0.0);
         d.learn(10);
-        d.second(-0.5 * G, 0.0, 10.0);
+        d.second(-0.5 * G, 0.0);
         assert!(close(d.g().longitudinal_g, -0.5), "{:?}", d.g());
     }
 
     #[test]
-    fn slow_or_gentle_speed_changes_teach_nothing() {
-        let mut d = Drive::new(Mount::new(0.0, 0.0, 0.0));
-        d.second(0.0, 0.0, 1.0);
-        for _ in 0..5 {
-            d.second(1.0, 0.0, 2.0); // too slow
-            d.second(-1.0, 0.0, 1.0);
+    fn corners_alone_teach_forward() {
+        let mut d = Drive::new(Mount::new(-2.0, 0.9, 0.4));
+        d.second(0.0, 0.0);
+        for _ in 0..3 {
+            d.second(0.0, 0.6 * G);
+            d.second(0.0, -0.4 * G);
         }
-        d.second(0.0, 0.0, 10.0);
+        assert!(d.g().aligned);
+        d.second(-0.7 * G, 0.2 * G);
+        assert!(close(d.g().longitudinal_g, -0.7) && close(d.g().lateral_g, 0.2), "{:?}", d.g());
+    }
+
+    #[test]
+    fn slow_or_gentle_driving_teaches_nothing() {
+        let mut d = Drive::new(Mount::new(0.0, 0.0, 0.0));
+        d.speed = 1.0;
+        d.second(0.0, 0.0);
         for _ in 0..5 {
-            d.second(1.0, 0.0, 11.0); // too gentle
-            d.second(-1.0, 0.0, 10.0);
+            d.second(1.5, 0.0); // too slow
+            d.second(-1.5, 0.0);
+        }
+        d.speed = 20.0;
+        for _ in 0..5 {
+            d.second(0.6, 0.5); // too gentle
+            d.second(-0.6, -0.5);
         }
         assert!(!d.g().aligned);
     }
@@ -338,9 +373,9 @@ mod tests {
         use crate::track::{Completed, Lap};
         let mut d = Drive::new(Mount::new(0.4, 0.3, 0.0));
         d.learn(3); // 7 s
-        d.second(-0.5 * G, 0.0, 10.0);
-        d.second(0.0, 0.3 * G, 10.0);
-        d.second(-0.9 * G, 0.0, 10.0);
+        d.second(-0.5 * G, 0.0);
+        d.second(0.0, 0.3 * G);
+        d.second(-0.9 * G, 0.0);
         let at = |ms| DateTime::UNIX_EPOCH + chrono::Duration::milliseconds(ms);
         let lap = Lap::new(vec![at(7_500), at(9_000)], false);
         let session = Session { track_id: uuid::Uuid::nil(), completed: Completed::Laps(vec![lap]) };
