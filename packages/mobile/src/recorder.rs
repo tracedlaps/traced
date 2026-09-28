@@ -120,7 +120,7 @@ impl RecorderCtx {
     /// first asks for the location permission if needed; fails if denied or location is off.
     pub async fn start(mut self, track: Option<Arc<Track>>) -> Result<(), GpsError> {
         let sources = match self.device_fixes().await? {
-            Some(fixes) => Sources { fixes, imu: self.device_imu(), clock: Default::default() },
+            Some(fixes) => Sources { fixes, imu: self.device_imu(), clock: Default::default(), alignment: storage::last_alignment() },
             None => self.mock_sources(track.clone()),
         };
         let reference = track.as_deref().and_then(storage::reference);
@@ -224,7 +224,7 @@ impl RecorderCtx {
         );
         let _ = gps.init();
         bridge(gps.status(), self.status, Some);
-        Sources { fixes: gps.stream_fixes(), imu: Some(gps.imu()), clock: Default::default() }
+        Sources { fixes: gps.stream_fixes(), imu: Some(gps.imu()), clock: Default::default(), alignment: storage::last_alignment() }
     }
 
     /// Where the phone is: the recording's (or capture's) latest fix, or the device GPS's first, if one comes soon.

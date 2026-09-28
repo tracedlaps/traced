@@ -40,7 +40,7 @@ One accelerometer reading in the phone's own axes (m/s²): acceleration with gra
 `FixConsumer` turning samples into the vehicle's g-forces, lateral (right positive) and longitudinal (speeding up positive), whatever way the phone is mounted. Publishes a `GForceSnapshot` (smoothed, at most 20 Hz) with running peaks, and hands back `GForces` (peaks overall and per lap) at the end.
 
 **Forward alignment**:
-How the `GMeter` finds the vehicle's forward axis in device axes, with no calibration step: gravity gives down, and each sharp GPS speed change says the horizontal acceleration felt meanwhile is along the travel direction. Keeps adapting, so a mount that shifts (or a handlebar that steers) re-aligns. Until three such changes, the snapshot is unaligned and reads zero.
+How the `GMeter` finds the vehicle's forward axis in device axes, with no calibration step: gravity gives down, and each sharp GPS speed change says the horizontal acceleration felt meanwhile is along the travel direction. Every speed change and corner teaches it: GPS gives the acceleration ahead and to the side, and with what the phone felt that pins forward down. Keeps adapting, so a mount that shifts (or a handlebar that steers) re-aligns. Until three such accelerations, the snapshot is unaligned and reads zero. The alignment each recording ends with is saved in its `GForces`; the next recording starts from the latest one if the phone's tilt matches within 10°, and drops it (and anything measured with it) if the first acceleration disagrees.
 
 **Felt force**:
 How the g-dial shows g-forces: a ball in a bowl, rolling opposite the acceleration. Braking rolls it up (forward), a left turn rolls it right.

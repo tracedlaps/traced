@@ -10,7 +10,7 @@ use tokio::{
 use crate::{
     clock::Clock,
     gps::{GPSFix, GpsError},
-    imu::{GForceSnapshot, GForces, GMeter, ImuSample},
+    imu::{Alignment, GForceSnapshot, GForces, GMeter, ImuSample},
     speedometer::{Speedometer, SpeedometerSnapshot},
     timing::Reference,
     track::{Correlator, LiveSessionSnapshot, Session, Track, Waypoint, trace::Trace},
@@ -30,11 +30,13 @@ pub struct Sources {
     pub imu: Option<BoxStream<'static, ImuSample>>,
     /// The time they arrive on: the device's, or a replay's.
     pub clock: Clock,
+    /// Where an earlier recording found the phone sat in its mount, to start from.
+    pub alignment: Option<Alignment>,
 }
 
 impl From<BoxStream<'static, Result<GPSFix, GpsError>>> for Sources {
     fn from(fixes: BoxStream<'static, Result<GPSFix, GpsError>>) -> Self {
-        Self { fixes, imu: None, clock: Clock::default() }
+        Self { fixes, imu: None, clock: Clock::default(), alignment: None }
     }
 }
 
@@ -69,6 +71,7 @@ impl Sources {
             fixes: paced(&clock, window, fixes, |f| f.timestamp).map(Ok).boxed(),
             imu: (!samples.is_empty()).then(|| paced(&clock, window, samples, |s| s.timestamp)),
             clock,
+            alignment: None,
         }
     }
 }
@@ -103,7 +106,10 @@ impl Recorder {
         let (correlator, session) = track.map(|t| Correlator::new(t, reference)).unzip();
         let correlator = correlator.map(|c| c.on(sources.clock.clone()));
         let (trace, trace_rx) = trace.then(Trace::new).unzip();
-        let (g_meter, g_rx) = sources.imu.is_some().then(GMeter::new).unzip();
+        let (mut g_meter, g_rx) = sources.imu.is_some().then(GMeter::new).unzip();
+        if let (Some(g), Some(a)) = (&mut g_meter, sources.alignment) {
+            g.resume(a);
+        }
         let (fix, fix_rx) = watch::channel(None);
         let (stop, stop_rx) = oneshot::channel();
         Recording {

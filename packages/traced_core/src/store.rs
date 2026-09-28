@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::{
     gps::GPSFix,
-    imu::{GForces, ImuSample},
+    imu::{Alignment, GForces, ImuSample},
     recorder::RecordingSummary,
     speedometer::SpeedometerSnapshot,
     timing::{Reference, best_lap},
@@ -379,6 +379,20 @@ impl Store {
         Ok(Some(Reference::new(track, lap.clone(), &self.fixes(id)?)))
     }
 
+    /// The phone's alignment in its mount as the latest recording that found one left it.
+    pub fn last_alignment(&self) -> Result<Option<Alignment>, StoreError> {
+        let alignment: Option<String> = self
+            .db
+            .query_row(
+                "SELECT json_extract(g, '$.alignment') FROM recordings
+                WHERE json_extract(g, '$.alignment') IS NOT NULL ORDER BY started_at DESC LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(alignment.map(|a| serde_json::from_str(&a)).transpose()?)
+    }
+
     /// A recording's accelerometer samples, in order.
     pub fn samples(&self, recording: Uuid) -> Result<Vec<ImuSample>, StoreError> {
         let mut stmt = self.db.prepare(
@@ -553,7 +567,11 @@ mod tests {
         let sample = |s, x| ImuSample { timestamp: at(s), accel: [x, 0.5, 0.0], gravity: [0.0, 0.0, 9.8] };
         RecordingSummary {
             started_at: at(secs),
-            g: Some(GForces { peaks: GPeaks { braking: 0.75, ..Default::default() }, laps: vec![GPeaks::default()] }),
+            g: Some(GForces {
+                peaks: GPeaks { braking: 0.75, ..Default::default() },
+                laps: vec![GPeaks::default()],
+                alignment: None,
+            }),
             samples: vec![sample(secs, 1.0), sample(secs + 1, -2.0)],
             session,
             speedometer,
@@ -614,6 +632,19 @@ mod tests {
         assert_eq!(saved[1], expected);
         assert_eq!(store.fixes(timed_id).unwrap(), timed.fixes);
         assert_eq!(store.samples(timed_id).unwrap(), timed.samples);
+    }
+
+    #[test]
+    fn last_alignment_is_the_newest_found() {
+        let store = Store::open(":memory:").unwrap();
+        assert_eq!(store.last_alignment().unwrap(), None);
+        let aligned = |forward| Some(Alignment { up: [0.0, 0.0, 1.0], forward });
+        for (secs, alignment) in [(100, aligned([1.0, 0.0, 0.0])), (200, aligned([0.0, 1.0, 0.0])), (300, None)] {
+            let mut r = summary(None, secs);
+            r.g.as_mut().unwrap().alignment = alignment;
+            save(&store, &r);
+        }
+        assert_eq!(store.last_alignment().unwrap(), aligned([0.0, 1.0, 0.0]));
     }
 
     #[test]

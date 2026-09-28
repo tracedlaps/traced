@@ -23,6 +23,10 @@ const ALIGN_MAX_GAP: Duration = Duration::from_secs(2);
 const ALIGN_RATE: f32 = 0.2;
 /// Accelerations needed before the estimate is trusted.
 const ALIGN_EVENTS: u32 = 3;
+/// A remembered alignment is used only if the phone's tilt is within this of when it was
+/// learned (cos 10°), and kept only if the first acceleration agrees with it (cos 45°).
+const PRIOR_SAME_TILT: f32 = 0.985;
+const PRIOR_AGREES: f32 = 0.707;
 /// Fixes less accurate than this (m) teach nothing.
 const MAX_ACCURACY_M: f32 = 25.0;
 
@@ -54,11 +58,21 @@ impl GPeaks {
     }
 }
 
+/// Where a `GMeter` found up and forward, in device axes: remembered so the next recording
+/// in the same mount starts aligned.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Alignment {
+    pub(crate) up: Vec3,
+    pub(crate) forward: Vec3,
+}
+
 /// A finished recording's g-forces: its peaks, and each completed lap's (or the run's).
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GForces {
     pub peaks: GPeaks,
     pub laps: Vec<GPeaks>,
+    /// `None` if it never aligned.
+    pub alignment: Option<Alignment>,
 }
 
 /// The vehicle's acceleration (g) in its own frame, smoothed.
@@ -93,6 +107,10 @@ pub struct GMeter {
     /// Running forward estimate in device axes; not unit length.
     forward: Vec3,
     events: u32,
+    /// Where the last recording left off, until the first sample decides whether it applies.
+    prior: Option<Alignment>,
+    /// Aligned from `prior` alone, not yet confirmed by an acceleration.
+    unconfirmed: bool,
     /// Every aligned reading so far, (time, longitudinal, lateral), to find a lap's peaks.
     readings: Vec<(DateTime<Utc>, f32, f32)>,
 }
@@ -111,6 +129,8 @@ impl GMeter {
             last_fix: None,
             forward: [0.0; 3],
             events: 0,
+            prior: None,
+            unconfirmed: false,
             readings: Vec::new(),
         };
         (meter, rx)
@@ -118,6 +138,11 @@ impl GMeter {
 
     pub fn snapshot(&self) -> GForceSnapshot {
         self.snapshot
+    }
+
+    /// Starts from `prior` (a past recording's) if the phone still sits the same way.
+    pub fn resume(&mut self, prior: Alignment) {
+        self.prior = Some(prior);
     }
 
     /// The peaks overall, and within each of `session`'s laps.
@@ -129,7 +154,10 @@ impl GMeter {
             self.readings[start..].iter().take_while(|r| r.0 <= to).for_each(|&(_, lon, lat)| p.add(lon, lat));
             p
         });
-        GForces { peaks: self.snapshot.peaks, laps: laps.collect() }
+        let alignment = unit(horizontal(self.forward, self.up))
+            .filter(|_| self.events >= ALIGN_EVENTS)
+            .map(|forward| Alignment { up: self.up, forward });
+        GForces { peaks: self.snapshot.peaks, laps: laps.collect(), alignment }
     }
 }
 
@@ -137,6 +165,9 @@ impl FixConsumer for GMeter {
     fn on_sample(&mut self, s: ImuSample) {
         let Some(up) = unit(s.gravity) else { return };
         self.up = up;
+        if let Some(prior) = self.prior.take().filter(|p| dot(p.up, up) > PRIOR_SAME_TILT) {
+            (self.forward, self.events, self.unconfirmed) = (prior.forward, ALIGN_EVENTS, true);
+        }
         let h = horizontal(s.accel, up);
         let dt = self.last_sample.replace(s.timestamp).map(|t| (s.timestamp - t).as_seconds_f32());
         let a = dt.map_or(1.0, |dt| 1.0 - (-dt.max(0.0) / SMOOTHING_S).exp());
@@ -182,6 +213,12 @@ impl FixConsumer for GMeter {
         }
         // mean = ahead·F + right·R with R = F × up, so ahead·mean − right·(mean × up) = gps²·F.
         let Some(seen) = unit(sub(scale(mean, ahead), scale(cross(mean, self.up), right))) else { return };
+        // Same tilt but, say, turned round in its mount: forget the prior and what it measured.
+        if std::mem::take(&mut self.unconfirmed)
+            && unit(horizontal(self.forward, self.up)).is_none_or(|f| dot(f, seen) < PRIOR_AGREES)
+        {
+            (self.forward, self.events, self.readings, self.snapshot) = ([0.0; 3], 0, Vec::new(), Default::default());
+        }
         self.forward = add(scale(self.forward, 1.0 - ALIGN_RATE), scale(seen, ALIGN_RATE));
         self.events += 1;
     }
@@ -383,6 +420,45 @@ mod tests {
         assert!(close(g.peaks.braking, 0.9));
         let [lap] = g.laps[..] else { panic!("one lap") };
         assert!(close(lap.braking, 0.5) && close(lap.right, 0.3), "{lap:?}");
+    }
+
+    /// A drive in `mount` that calibrated, and the alignment it left.
+    fn learned(mount: Mount) -> Alignment {
+        let mut d = Drive::new(mount);
+        d.learn(3);
+        d.meter.into_forces(None).alignment.unwrap()
+    }
+
+    #[test]
+    fn same_mount_starts_aligned() {
+        let mount = Mount::new(0.8, 0.6, -0.2);
+        let mut d = Drive::new(mount);
+        d.meter.resume(learned(mount));
+        d.second(0.0, 0.4 * G);
+        assert!(close(d.g().lateral_g, 0.4) && close(d.g().longitudinal_g, 0.0), "{:?}", d.g());
+        d.second(-0.6 * G, 0.0);
+        assert!(d.g().aligned && close(d.g().longitudinal_g, -0.6), "{:?}", d.g());
+    }
+
+    #[test]
+    fn a_retilted_mount_calibrates_afresh() {
+        let mut d = Drive::new(Mount::new(0.8, 0.9, -0.2));
+        d.meter.resume(learned(Mount::new(0.8, 0.6, -0.2)));
+        d.second(0.0, 0.4 * G);
+        assert!(!d.g().aligned);
+    }
+
+    #[test]
+    fn a_turned_round_mount_drops_the_prior_at_the_first_acceleration() {
+        let mut d = Drive::new(Mount::new(0.8 + std::f32::consts::PI, 0.0, 0.0));
+        d.meter.resume(learned(Mount::new(0.8, 0.0, 0.0)));
+        d.second(0.0, 0.0);
+        assert!(d.g().aligned, "same tilt: trusted at first");
+        d.second(-0.5 * G, 0.0);
+        assert!(!d.g().aligned && d.g().peaks == GPeaks::default(), "{:?}", d.g());
+        d.learn(2);
+        d.second(-0.5 * G, 0.0);
+        assert!(d.g().aligned && close(d.g().longitudinal_g, -0.5), "{:?}", d.g());
     }
 
     #[test]

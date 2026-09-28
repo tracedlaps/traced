@@ -13,7 +13,7 @@ use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use traced_core::{
     gps::GPSFix,
-    imu::ImuSample,
+    imu::{Alignment, ImuSample},
     recorder::{FixConsumer, RecordingSummary},
     store::{SavedRecording, Store, StoreError},
     timing::Reference,
@@ -159,6 +159,11 @@ pub fn begin(
 /// Stores how recording `id` went (its fixes are already in), or drops it without any.
 pub fn finish(id: Uuid, summary: &RecordingSummary) {
     with_store("finish recording", |s| s.finish_recording(id, summary, false));
+}
+
+/// How the phone sat in its mount last time, so the g-meter can start aligned.
+pub fn last_alignment() -> Option<Alignment> {
+    with_store("load alignment", |s| s.last_alignment()).flatten()
 }
 
 /// The best lap on `track` so far, to race against.
