@@ -30,7 +30,7 @@ A real `GpsProvider` for Android phones. It is a Kotlin plugin bridged with `#[m
 - **Status is pushed**, not polled: the provider exposes a `watch::Receiver<GpsStatus>`, consistent with [snapshot delivery](../track-timing/issues/06-snapshot-delivery.md). Android doesn't report HDOP, so `GpsStatus::Fixed` becomes `{ satellites, accuracy_m, source }`.
 - **Plugin construction:** load the class with `activity.getClassLoader().loadClass(..)` and wrap it with `GpsPlugin::from_global_ref`. The macro's `new()` uses `FindClass`, which can't see app classes from tokio threads.
 - **Permission:** use the prototype's custom `MainActivity` (set by `application.android_main_activity`), whose `registerForActivityResult` launcher is wired into the plugin's companion object. `requestPermissions` waits (up to 60 s: users take longer than 5 s to answer, and a timeout reads as a denial) for the result, so Rust calls it inside `spawn_blocking`. It is asked for lazily, the first time the user starts a recording.
-- **Background:** v1 keeps the screen on while recording (`FLAG_KEEP_SCREEN_ON`). A foreground service is deferred.
+- **Background:** recording keeps the screen on (`FLAG_KEEP_SCREEN_ON`) and runs `RecordingService`, a location foreground service holding a partial wake lock, so it survives a locked phone.
 
 ## Kotlin surface
 
@@ -69,6 +69,5 @@ class GpsPlugin(activity: Activity) {
 ## Out of scope
 
 - iOS bridge (same shape, later).
-- Background recording with a foreground service.
 - Raw GNSS / NMEA (true HDOP, 10 Hz chip modes).
 - Hand-written JNI push callbacks (`CallbackSystem`). The queue drain makes them unnecessary unless device testing shows otherwise.

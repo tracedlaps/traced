@@ -9,6 +9,7 @@ import android.location.GnssStatus
 import android.location.Location
 import android.location.LocationManager
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
@@ -67,7 +68,7 @@ class GpsPlugin(
     /** Fires the dialog through MainActivity's launcher and waits (≤60 s) for the user's answer. Never call on the UI thread. */
     fun requestPermissions(): String {
         val fire = requestLocationPermission
-        if (!hasPermission() && fire != null) {
+        if ((!hasPermission() || !hasNotificationPermission()) && fire != null) {
             val latch = CountDownLatch(1).also { pendingResult = it }
             activity.runOnUiThread { fire() }
             latch.await(PERMISSION_WAIT_SECONDS, TimeUnit.SECONDS)
@@ -122,10 +123,17 @@ class GpsPlugin(
             ok(null)
         }
 
-    fun keepScreenOn(on: Boolean): String =
+    /** Keeps the screen on and, with the permission, runs [RecordingService] so recording survives a locked phone. */
+    fun setRecording(on: Boolean): String =
         guard {
             val flag = WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             activity.runOnUiThread { if (on) activity.window.addFlags(flag) else activity.window.clearFlags(flag) }
+            val service = Intent(activity, RecordingService::class.java)
+            if (!on) {
+                activity.stopService(service)
+            } else if (hasPermission()) {
+                ContextCompat.startForegroundService(activity, service)
+            }
             ok(null)
         }
 
@@ -200,6 +208,11 @@ class GpsPlugin(
 
     private fun hasPermission(): Boolean =
         ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+    /** Shows the recording notification; implied before Android 13. */
+    private fun hasNotificationPermission(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
     private inline fun guard(block: () -> String): String =
         try {

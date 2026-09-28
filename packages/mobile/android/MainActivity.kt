@@ -1,6 +1,7 @@
 package dev.dioxus.main
 
 import android.Manifest
+import android.os.Build
 import androidx.activity.result.contract.ActivityResultContracts
 import dev.traced.gps.GpsPlugin
 import dev.traced.storage.StoragePlugin
@@ -14,8 +15,8 @@ typealias BuildConfig = com.tracedlaps.app.BuildConfig
 // did not fire reliably under WryActivity.
 class MainActivity : WryActivity() {
     private val locationPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            GpsPlugin.onPermissionResult(granted)
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
+            GpsPlugin.onPermissionResult(granted[Manifest.permission.ACCESS_FINE_LOCATION] == true)
         }
     private val filePicker =
         registerForActivityResult(ActivityResultContracts.OpenDocument(), StoragePlugin::onFileChosen)
@@ -24,7 +25,9 @@ class MainActivity : WryActivity() {
 
     init {
         GpsPlugin.requestLocationPermission = {
-            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            // Notifications too: they show the recording's foreground service (Android 13+).
+            val notifications = listOfNotNull(Manifest.permission.POST_NOTIFICATIONS.takeIf { Build.VERSION.SDK_INT >= 33 })
+            locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION) + notifications)
         }
         // CSV, GPX and KML have no reliable MIME types, so any file; the parser tells them apart.
         StoragePlugin.launchFilePicker = { filePicker.launch(arrayOf("*/*")) }

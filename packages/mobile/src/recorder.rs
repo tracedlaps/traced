@@ -158,14 +158,14 @@ impl RecorderCtx {
         self.show(&capture);
         bridge(capture.trace.clone().expect("tracing"), self.trace, Some);
         self.capture.set(Some(capture));
-        self.keep_screen_on(true);
+        self.set_recording(true);
         Ok(())
     }
 
     /// Stops the capture; its path's waypoints, if one was running.
     pub async fn end_capture(mut self) -> Option<Vec<Waypoint>> {
         let capture = self.capture.write().take()?;
-        self.keep_screen_on(false);
+        self.set_recording(false);
         capture.stop().await.trace
     }
 
@@ -173,7 +173,7 @@ impl RecorderCtx {
         let Some(recording) = self.recording.write().take() else {
             return;
         };
-        self.keep_screen_on(false);
+        self.set_recording(false);
         if self.replaying.write().take().is_some() {
             self.replay_fixes.set(None);
             return; // dropping it ends the replay
@@ -197,7 +197,7 @@ impl RecorderCtx {
         }
         self.track.set(track);
         self.recording.set(Some(recording));
-        self.keep_screen_on(true);
+        self.set_recording(true);
     }
 
     /// Mirrors the fixes and speedometer of `recording` into their signals.
@@ -270,10 +270,10 @@ impl RecorderCtx {
         None
     }
 
-    fn keep_screen_on(self, _on: bool) {
+    fn set_recording(self, _on: bool) {
         #[cfg(target_os = "android")]
-        if let Some(Err(e)) = self.device.map(|gps| gps.keep_screen_on(_on)) {
-            warn!("keep screen on: {e}");
+        if let Some(Err(e)) = self.device.map(|gps| gps.set_recording(_on)) {
+            warn!("set recording: {e}");
         }
     }
 
