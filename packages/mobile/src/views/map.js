@@ -25,7 +25,7 @@ map.on('click', (e) => dioxus.send({ tap_map: ll(e.latlng) }));
 
 let markers = [], midpoints = [], overlay = null, first = true;
 // The traced path, the phone's position, and whether the map follows it (until panned).
-let trace = null, me = null, follow = true;
+let trace = null, passed = null, tail = null, me = null, follow = true;
 map.on('dragstart', () => (follow = false));
 
 // Handles to insert a waypoint, halfway along each segment long enough on screen to hold one.
@@ -49,8 +49,30 @@ function drawMidpoints() {
 }
 map.on('zoomend', drawMidpoints);
 
+// The track's markers, or else the path.
 function fit() {
-    if (markers.length) map.fitBounds(L.featureGroup(markers).getBounds(), { padding: [48, 48], maxZoom: 18 });
+    const shapes = markers.length ? markers : trace ? [trace] : [];
+    if (shapes.length) map.fitBounds(L.featureGroup(shapes).getBounds(), { padding: [48, 48], maxZoom: 18 });
+}
+
+// The dot glides to each new position over the time since the last one, so it moves steadily
+// (trailing by one interval) whatever the fix rate or replay speed; the map follows it.
+let from = null, to = null, started = 0, duration = 0, last = 0, frame = 0;
+function glide(p) {
+    const now = performance.now();
+    [from, to, started] = [me.getLatLng(), L.latLng(p), now];
+    duration = last ? Math.min(now - last, 2000) : 0;
+    last = now;
+    cancelAnimationFrame(frame);
+    step();
+}
+function step() {
+    const k = duration ? Math.min((performance.now() - started) / duration, 1) : 1;
+    const p = L.latLng(from.lat + (to.lat - from.lat) * k, from.lng + (to.lng - from.lng) * k);
+    me.setLatLng(p);
+    tail?.setLatLngs([from, p]);
+    if (follow) map.panTo(p, { animate: false });
+    if (k < 1) frame = requestAnimationFrame(step);
 }
 
 // Markers are kept and updated in place, so one isn't rebuilt under a finger.
@@ -81,17 +103,31 @@ function draw(view) {
         overlay = L.svgOverlay(svg, view.overlay.bounds).addTo(map);
     }
 
-    if (view.trace.length) (trace ??= L.polyline([], { className: 'trace', interactive: false }).addTo(map)).setLatLngs(view.trace);
+    const replay = view.passed != null;
+    if (view.trace.length) (trace ??= L.polyline([], { className: replay ? 'trace ahead' : 'trace', interactive: false }).addTo(map)).setLatLngs(view.trace);
     else {
         trace?.remove();
         trace = null;
     }
-    if (view.me) {
-        (me ??= L.marker(view.me, { icon: icon('me'), interactive: false, keyboard: false }).addTo(map)).setLatLng(view.me);
-        if (follow) map.getZoom() < 15 ? map.setView(view.me, 17) : map.panTo(view.me);
+    // Up to the fix before the dot's target: the tail runs from there to the gliding dot.
+    if (replay) {
+        (passed ??= L.polyline([], { className: 'trace', interactive: false }).addTo(map)).setLatLngs(view.trace.slice(0, Math.max(view.passed - 1, 0)));
+        tail ??= L.polyline([], { className: 'trace', interactive: false }).addTo(map);
     } else {
+        [passed, tail].forEach((l) => l?.remove());
+        passed = tail = null;
+    }
+    if (view.me) {
+        me ??= L.marker(view.me, { icon: icon('me'), interactive: false, keyboard: false }).addTo(map);
+        if (follow && map.getZoom() < 15) map.setView(view.me, 17);
+        glide(view.me);
+    } else {
+        cancelAnimationFrame(frame);
         me?.remove();
         me = null;
+        // The replay's end: the whole path is behind.
+        passed?.setLatLngs(view.trace.slice(0, view.passed ?? 0));
+        tail?.setLatLngs([]);
     }
 
     if (first) fit();

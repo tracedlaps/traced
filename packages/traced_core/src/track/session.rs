@@ -39,6 +39,11 @@ impl Session {
         Self { track_id: track.uuid, completed }
     }
 
+    /// From the first lap's (or the run's) start to the last one's finish.
+    pub fn timed(&self) -> Option<(DateTime<Utc>, DateTime<Utc>)> {
+        Some((*self.laps().first()?.crossings().first()?, *self.laps().last()?.crossings().last()?))
+    }
+
     /// A Closed track's laps, or an Open track's run as a single lap.
     pub fn laps(&self) -> &[Lap] {
         match &self.completed {

@@ -156,3 +156,9 @@ restore-backup = Restaurar cópia
 backup-saved = Cópia guardada.
 backup-restored = Cópia restaurada.
 backup-failed = A cópia falhou: { $error }
+
+back-to-replay = A reproduzir · voltar à reprodução
+replay = Reproduzir
+end-replay = Terminar reprodução
+replay-ended = Reprodução terminada.
+replay-trim = Saltar antes da partida e depois da chegada

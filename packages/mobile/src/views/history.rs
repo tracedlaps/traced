@@ -10,8 +10,13 @@ use traced_core::{
 };
 use uuid::Uuid;
 
-use super::{kmh, lap_time, results::Report};
-use crate::{i18n::local_date, storage, Route};
+use super::{
+    kmh, lap_time,
+    map::{Map, View},
+    results::Report,
+    track_map::{Layout, TrackSvg},
+};
+use crate::{i18n::local_date, recorder::RecorderCtx, storage, Route};
 
 #[component]
 pub fn History() -> Element {
@@ -45,6 +50,8 @@ pub fn History() -> Element {
 #[component]
 pub fn SavedResults(id: Uuid) -> Element {
     let tracks = use_context::<Signal<Vec<Arc<Track>>>>();
+    let ctx = use_context::<RecorderCtx>();
+    let mut trim = use_signal(|| true);
     let Some(r) = storage::recordings().into_iter().find(|r| r.id == id) else {
         return rsx! {
             main {
@@ -52,6 +59,8 @@ pub fn SavedResults(id: Uuid) -> Element {
             }
         };
     };
+    let timed = r.session.as_ref().and_then(Session::timed);
+    let track = r.session.as_ref().and_then(|s| tracks.read().iter().find(|t| t.uuid == s.track_id).cloned());
 
     rsx! {
         main {
@@ -60,9 +69,48 @@ pub fn SavedResults(id: Uuid) -> Element {
             if r.interrupted {
                 small { class: "interrupted", {t!("interrupted-detail")} }
             }
+            button {
+                // The shell's bar leads back to a recording (or replay) in progress.
+                disabled: ctx.recording.read().is_some(),
+                onclick: move |_| {
+                    if ctx.replay(id, track.clone(), timed.filter(|_| trim())) {
+                        navigator().push(Route::Live {});
+                    }
+                },
+                {t!("replay")}
+            }
+            if timed.is_some() {
+                label { class: "check",
+                    input { r#type: "checkbox", checked: trim(), onchange: move |e| trim.set(e.checked()) }
+                    {t!("replay-trim")}
+                }
+            }
             div { class: "scroll",
+                // Its track, or without one, where it went.
+                match &track {
+                    Some(t) => rsx! { TrackSvg { layout: Layout::new(t), current: None } },
+                    None if r.session.is_none() => rsx! { RecordingMap { id } },
+                    None => rsx! {},
+                }
                 Report { speed: r.speedometer, session: r.session, g: r.g }
             }
+        }
+    }
+}
+
+/// Where recording `id` went, on the map.
+#[component]
+fn RecordingMap(id: Uuid) -> Element {
+    let view = use_signal(|| View {
+        trace: storage::fixes(id).into_iter().map(Into::into).collect(),
+        ..View::default()
+    });
+    if view.read().trace.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        div { class: "recording-map",
+            Map { view, on_event: |_| {}, locate: false, search: false }
         }
     }
 }

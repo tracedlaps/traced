@@ -156,3 +156,9 @@ restore-backup = Restore backup
 backup-saved = Backup saved.
 backup-restored = Backup restored.
 backup-failed = Backup failed: { $error }
+
+back-to-replay = Replaying · back to replay
+replay = Replay
+end-replay = End replay
+replay-ended = Replay finished.
+replay-trim = Skip before the start and after the finish

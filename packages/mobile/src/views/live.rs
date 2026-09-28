@@ -1,10 +1,17 @@
 use std::time::{Duration, Instant};
 
+use traced_core::clock::Clock;
+
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use traced_core::track::LiveStatus;
 
-use super::{gps_status, kmh, lap_time, track_map::TrackMap, Delta};
+use super::{
+    gps_status, kmh, lap_time,
+    map::{Map, View},
+    track_map::TrackMap,
+    Delta,
+};
 use crate::{recorder::RecorderCtx, Route};
 
 #[component]
@@ -21,6 +28,8 @@ pub fn Live() -> Element {
     // The recording outlives its fix stream when a mock run ends; its signals are cleared then.
     let ended = ctx.speed.read().is_none();
     let speed = ctx.speed.read().unwrap_or_default();
+    let replaying = *ctx.replaying.read();
+    let clock = ctx.recording.read().as_ref().map(|r| r.clock.clone()).unwrap_or_default();
 
     rsx! {
         main { class: "live",
@@ -36,7 +45,11 @@ pub fn Live() -> Element {
                 dt { {t!("stat-avg")} } dd { "{kmh(speed.average_speed_ms)} km/h" }
                 dt { {t!("stat-distance")} } dd { "{speed.distance_m / 1000.0:.2} km" }
             }
-            TrackMap {}
+            if ctx.track.read().is_none() && replaying.is_some() {
+                ReplayMap {}
+            } else {
+                TrackMap {}
+            }
             if let Some(live) = *ctx.live.read() {
                 section { class: "session",
                     match live.status {
@@ -45,7 +58,7 @@ pub fn Live() -> Element {
                             p { {t!("lap-n", n: live.laps + 1)} }
                             // Delta sits beside the clock so it never steals height from the map.
                             div { class: "lap-clock",
-                                LiveClock { anchor: lap_anchor, class: "clock" }
+                                LiveClock { anchor: lap_anchor, clock: clock.clone(), class: "clock" }
                                 if let Some(delta) = live.delta {
                                     div { class: "live-delta",
                                         small { {t!("delta")} }
@@ -56,7 +69,7 @@ pub fn Live() -> Element {
                             // Same color as the sector on the map.
                             div { class: "sector-clock", style: "color: var(--sector-{sector % 4})",
                                 span { {t!("sector-n", n: sector + 1)} }
-                                LiveClock { anchor: sector_anchor, class: "clock small" }
+                                LiveClock { anchor: sector_anchor, clock: clock.clone(), class: "clock small" }
                             }
                         },
                         LiveStatus::Finished => rsx! { p { {t!("finished")} } },
@@ -78,17 +91,21 @@ pub fn Live() -> Element {
                     }
                 }
             }
-            p { class: "note", {gps_status(*ctx.status.read())} }
+            if replaying.is_some() {
+                ReplaySpeed { clock }
+            } else {
+                p { class: "note", {gps_status(*ctx.status.read())} }
+            }
             if ended {
-                p { class: "note", {t!("gps-ended")} }
+                p { class: "note", {if replaying.is_some() { t!("replay-ended") } else { t!("gps-ended") }} }
             }
             button {
                 class: "stop",
                 onclick: move |_| {
                     ctx.stop();
-                    navigator().push(Route::Results {});
+                    navigator().push(replaying.map_or(Route::Results {}, |id| Route::SavedResults { id }));
                 },
-                {t!("stop")}
+                {if replaying.is_some() { t!("end-replay") } else { t!("stop") }}
             }
         }
     }
@@ -137,14 +154,69 @@ fn GDial() -> Element {
     }
 }
 
-/// Ticks at 10 Hz on its own, so only the clock text re-renders.
+/// A replay without a track: its whole path, the stretch driven so far in colour, and the dot
+/// the map follows.
 #[component]
-fn LiveClock(anchor: Instant, class: &'static str) -> Element {
-    let mut now = use_signal(Instant::now);
-    use_future(move || async move {
-        loop {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            now.set(Instant::now());
+fn ReplayMap() -> Element {
+    let ctx = use_context::<RecorderCtx>();
+    let view = use_memo(move || {
+        let fixes = ctx.replay_fixes.read().clone().unwrap_or_default();
+        let fix = (ctx.fix)();
+        // No fix before the first, or after the last, when its signals are cleared.
+        let passed = match fix {
+            Some(f) => fixes.partition_point(|p| p.timestamp <= f.timestamp),
+            None if ctx.speed.read().is_none() => fixes.len(),
+            None => 0,
+        };
+        View {
+            trace: fixes.iter().map(|&f| f.into()).collect(),
+            passed: Some(passed),
+            me: fix.map(Into::into),
+            ..View::default()
+        }
+    });
+    rsx! {
+        div { class: "recording-map",
+            Map { view, on_event: |_| {}, locate: false, search: false }
+        }
+    }
+}
+
+/// How fast the replay plays.
+#[component]
+fn ReplaySpeed(clock: Clock) -> Element {
+    let mut speed = use_signal(|| clock.speed());
+    rsx! {
+        div { class: "modes",
+            for x in [1.0, 2.0, 5.0, 10.0] {
+                button {
+                    class: if speed() == x { "button" } else { "button secondary" },
+                    onclick: {
+                        let clock = clock.clone();
+                        move |_| {
+                            clock.set_speed(x);
+                            speed.set(x);
+                        }
+                    },
+                    "{x}×"
+                }
+            }
+        }
+    }
+}
+
+/// Ticks at 10 Hz (real time) on its own, so only the clock text re-renders. Reads `clock`,
+/// the recording's, so a replay's runs at its speed.
+#[component]
+fn LiveClock(anchor: Instant, clock: Clock, class: &'static str) -> Element {
+    let mut now = use_signal(|| clock.now());
+    use_future(move || {
+        let clock = clock.clone();
+        async move {
+            loop {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                now.set(clock.now());
+            }
         }
     });
     rsx! {

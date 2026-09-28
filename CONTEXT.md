@@ -21,6 +21,12 @@ The handle returned by `Recorder::start` for one recording: typed `watch` receiv
 **RecordingSummary**:
 What a finished recording hands back: its wall-clock start, the completed `Session` (if a track was armed), the final `SpeedometerSnapshot`, its `GForces` (with an accelerometer), and every raw `GPSFix` and `ImuSample` received (kept so a recording can be replayed or re-timed later: `RecordingSummary::replay` re-derives the rest from them alone).
 
+**Clock**:
+The time a `Recording` runs on, carried in its `Sources`: the device's for a live one, or a replay's, which runs at an adjustable speed. The `Correlator` anchors lap clocks on it and the UI reads them on it, so they keep pace with a replay.
+
+**Replay**:
+A saved recording played back through a fresh `Recorder` (`Sources::replay`): its fixes and samples re-emitted when they came in, on a replay `Clock` (1×–10×, changeable mid-way), shown on the live screen and timed against the track again. By default it plays only from 3 s before the first start to 3 s after the last finish: the rest is sent at once, so it still counts. Never saved.
+
 **FixConsumer**:
 Trait for anything that reacts to a live fix stream (`Track::Correlator`, `Speedometer`). Stateful accumulator fed one fix at a time; publishes its snapshot on a `watch` channel after each fix (latest value only, pushed on change).
 _Avoid_: Subscriber, listener (implies pub/sub — this is direct dispatch from one owner, not a broadcast channel).

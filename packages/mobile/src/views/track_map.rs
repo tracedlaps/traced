@@ -19,6 +19,8 @@ pub fn TrackMap() -> Element {
         .as_deref()
         .zip(*ctx.fix.read())
         .map(|(track, fix)| svg_point(track, Waypoint::new(fix.longitude, fix.latitude)));
+    // A replay's fixes come `speed`× as often, so the glide shortens to match.
+    let glide = 1.0 / ctx.recording.read().as_ref().map_or(1.0, |r| r.clock.speed());
     let current = match ctx.live.read().as_ref().map(|l| l.status) {
         Some(LiveStatus::InProgress { sector, .. }) => Some(sector),
         _ => None,
@@ -31,7 +33,7 @@ pub fn TrackMap() -> Element {
                 circle {
                     class: "you",
                     r: layout.dot_r,
-                    style: "transform: translate({x}px, {y}px)",
+                    style: "transform: translate({x}px, {y}px); transition-duration: {glide}s",
                 }
             }
         }

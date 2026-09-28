@@ -4,7 +4,7 @@ use dioxus_i18n::t;
 use super::{
     editor::{Draft, Editor},
     gps_status,
-    map::{street_at, LatLng, Map, View},
+    map::{street_at, Map, View},
     refusal,
 };
 use crate::{gps::wire::Permission, recorder::RecorderCtx, Route};
@@ -29,7 +29,7 @@ pub fn RecordTrack() -> Element {
 
     let view = use_memo(move || View {
         trace: ctx.trace.read().iter().flat_map(|t| t.iter()).map(|&w| w.into()).collect(),
-        me: (ctx.fix)().map(|f| LatLng { lat: f.latitude, lng: f.longitude }),
+        me: (ctx.fix)().map(Into::into),
         ..View::default()
     });
     let stop = move |_| async move {

@@ -6,6 +6,7 @@ use tokio::sync::watch;
 
 use super::{Boundary, Gate, Lap, Session, Track};
 use crate::{
+    clock::Clock,
     gps::GPSFix,
     recorder::FixConsumer,
     timing::{Progress, Reference},
@@ -36,8 +37,8 @@ pub enum LiveStatus {
     /// Waiting for the first start-gate crossing.
     #[default]
     Armed,
-    /// Anchors are the lap and current sector starts on the device clock:
-    /// the UI shows their `elapsed()`.
+    /// Anchors are the lap and current sector starts on the recording's `Clock`:
+    /// the UI shows the time since, on it.
     InProgress { lap_anchor: Instant, sector_anchor: Instant, sector: usize },
     Finished,
 }
@@ -53,6 +54,8 @@ pub struct Correlator {
     prev: Option<(Coord, DateTime<Utc>)>,
     /// Been `REARM_DISTANCE` from the last crossed gate since crossing it.
     rearmed: bool,
+    /// What the anchors are on.
+    clock: Clock,
 }
 
 enum State {
@@ -84,7 +87,12 @@ impl Correlator {
         let best = reference.as_ref().map(|r| r.lap.duration());
         let (tx, rx) = watch::channel(LiveSessionSnapshot { best, ..Default::default() });
         let session = Session::new(&track);
-        (Self { track, session, reference, tx, state: State::Armed, prev: None, rearmed: false }, rx)
+        (Self { track, session, reference, tx, state: State::Armed, prev: None, rearmed: false, clock: Clock::default() }, rx)
+    }
+
+    /// Anchors lap clocks on `clock` instead of the device's.
+    pub fn on(self, clock: Clock) -> Self {
+        Self { clock, ..self }
     }
 
     /// Completed laps/run; a lap still in progress is discarded.
@@ -160,8 +168,8 @@ impl FixConsumer for Correlator {
             }
         };
 
-        // Back-date to when the crossing happened, on the device's monotonic clock.
-        let anchor = Instant::now() - (t1 - at).to_std().unwrap_or_default();
+        // Back-date to when the crossing happened, on the recording's clock.
+        let anchor = self.clock.now() - (t1 - at).to_std().unwrap_or_default();
         let best = self.reference.as_ref().map(|r| r.lap.duration());
         self.tx.send_modify(|s| {
             s.status = match (&self.state, s.status) {

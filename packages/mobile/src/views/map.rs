@@ -1,7 +1,7 @@
 use dioxus::{document::Eval, prelude::*};
 use dioxus_i18n::t;
 use serde::{Deserialize, Serialize};
-use traced_core::track::Waypoint;
+use traced_core::{gps::GPSFix, track::Waypoint};
 
 use crate::recorder::RecorderCtx;
 
@@ -25,6 +25,12 @@ impl From<Waypoint> for LatLng {
     }
 }
 
+impl From<GPSFix> for LatLng {
+    fn from(f: GPSFix) -> Self {
+        Self { lat: f.latitude, lng: f.longitude }
+    }
+}
+
 impl From<LatLng> for Waypoint {
     fn from(p: LatLng) -> Self {
         Waypoint::new(p.lng, p.lat)
@@ -42,6 +48,8 @@ pub struct View {
     pub overlay: Option<Overlay>,
     /// A path being traced, drawn as a line.
     pub trace: Vec<LatLng>,
+    /// When replaying `trace`: how many of its points are behind; the rest is drawn faint.
+    pub passed: Option<usize>,
     /// Where the phone is; the map follows it until panned.
     pub me: Option<LatLng>,
 }
@@ -116,7 +124,12 @@ pub async fn street_at(p: LatLng) -> Option<String> {
 /// A Leaflet map of `view`, with place search, a satellite/streets toggle and buttons to fit
 /// the track or go to the phone's location. Fits the track on open, or, unless `!locate`, locates when there is none.
 #[component]
-pub fn Map(view: ReadSignal<View>, on_event: EventHandler<MapEvent>, #[props(default = true)] locate: bool) -> Element {
+pub fn Map(
+    view: ReadSignal<View>,
+    on_event: EventHandler<MapEvent>,
+    #[props(default = true)] locate: bool,
+    #[props(default = true)] search: bool,
+) -> Element {
     let ctx = use_context::<RecorderCtx>();
     let mut map = use_signal(|| None::<Eval>);
     let mut query = use_signal(String::new);
@@ -169,6 +182,7 @@ pub fn Map(view: ReadSignal<View>, on_event: EventHandler<MapEvent>, #[props(def
             }
             form {
                 class: "map-search",
+                hidden: !search,
                 onsubmit: move |e| {
                     e.prevent_default();
                     let q = query.read().trim().to_string();
@@ -214,7 +228,7 @@ pub fn Map(view: ReadSignal<View>, on_event: EventHandler<MapEvent>, #[props(def
                     }
                 }
                 button { onclick: move |_| find_me(), {t!("my-location")} }
-                if !view.read().points.is_empty() {
+                if !view.read().points.is_empty() || !view.read().trace.is_empty() {
                     button { onclick: move |_| send(ToMap::Fit), {t!("fit-track")} }
                 }
             }

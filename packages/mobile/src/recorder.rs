@@ -1,6 +1,6 @@
 use std::{convert::identity, sync::Arc};
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 
 use dioxus::{core::spawn_forever, prelude::*};
 use futures::{stream::BoxStream, StreamExt};
@@ -39,6 +39,10 @@ pub struct RecorderCtx {
     pub last_summary: Signal<Option<RecordingSummary>>,
     /// The current recording's id in the store; `None` if it isn't being saved.
     saved: Signal<Option<Uuid>>,
+    /// The saved recording being replayed instead, if it is one.
+    pub replaying: Signal<Option<Uuid>>,
+    /// Its fixes, to show the whole path.
+    pub replay_fixes: Signal<Option<Arc<[GPSFix]>>>,
     /// The track of the current (or last) recording.
     pub track: Signal<Option<Arc<Track>>>,
     pub fix: Signal<Option<GPSFix>>,
@@ -86,6 +90,8 @@ impl RecorderCtx {
             trace: Signal::new_in_scope(None, ScopeId::ROOT),
             last_summary: Signal::new_in_scope(None, ScopeId::ROOT),
             saved: Signal::new_in_scope(None, ScopeId::ROOT),
+            replaying: Signal::new_in_scope(None, ScopeId::ROOT),
+            replay_fixes: Signal::new_in_scope(None, ScopeId::ROOT),
             track: Signal::new_in_scope(None, ScopeId::ROOT),
             fix: Signal::new_in_scope(None, ScopeId::ROOT),
             speed: Signal::new_in_scope(None, ScopeId::ROOT),
@@ -114,23 +120,31 @@ impl RecorderCtx {
     /// first asks for the location permission if needed; fails if denied or location is off.
     pub async fn start(mut self, track: Option<Arc<Track>>) -> Result<(), GpsError> {
         let sources = match self.device_fixes().await? {
-            Some(fixes) => Sources { fixes, imu: self.device_imu() },
+            Some(fixes) => Sources { fixes, imu: self.device_imu(), clock: Default::default() },
             None => self.mock_sources(track.clone()),
         };
         let reference = track.as_deref().and_then(storage::reference);
         let started_at = Utc::now();
         let (saved, journal) = storage::begin(started_at, track.as_deref()).unzip();
         let recording = Recorder::start(sources, track.clone(), reference, false, started_at, journal);
-        self.show(&recording);
-        if let Some(live) = recording.session.clone() {
-            bridge(live, self.live, Some);
-        }
-        self.track.set(track);
         self.last_summary.set(None);
         self.saved.set(saved);
-        self.recording.set(Some(recording));
-        self.keep_screen_on(true);
+        self.run(recording, track);
         Ok(())
+    }
+
+    /// Plays saved recording `id` back on the live screen (only around its `timed` part, if given),
+    /// timed against `track` again; not saved. `false` if it has no fixes.
+    pub fn replay(mut self, id: Uuid, track: Option<Arc<Track>>, timed: Option<(DateTime<Utc>, DateTime<Utc>)>) -> bool {
+        let Some((fixes, samples)) = storage::replay_data(id) else {
+            return false;
+        };
+        let reference = track.as_deref().and_then(storage::reference);
+        self.replaying.set(Some(id));
+        self.replay_fixes.set(Some(fixes.as_slice().into()));
+        let sources = Sources::replay(fixes, samples, 1.0, timed);
+        self.run(Recorder::start(sources, track.clone(), reference, false, Utc::now(), None), track);
+        true
     }
 
     /// Traces a drive or walk to make a track from, on the device GPS (asking for the location
@@ -160,6 +174,10 @@ impl RecorderCtx {
             return;
         };
         self.keep_screen_on(false);
+        if self.replaying.write().take().is_some() {
+            self.replay_fixes.set(None);
+            return; // dropping it ends the replay
+        }
         let saved = self.saved.write().take();
         spawn_forever(async move {
             let summary = recording.stop().await;
@@ -172,6 +190,16 @@ impl RecorderCtx {
 }
 
 impl RecorderCtx {
+    fn run(mut self, recording: Recording, track: Option<Arc<Track>>) {
+        self.show(&recording);
+        if let Some(live) = recording.session.clone() {
+            bridge(live, self.live, Some);
+        }
+        self.track.set(track);
+        self.recording.set(Some(recording));
+        self.keep_screen_on(true);
+    }
+
     /// Mirrors the fixes and speedometer of `recording` into their signals.
     fn show(self, recording: &Recording) {
         bridge(recording.fix.clone(), self.fix, identity);
@@ -196,7 +224,7 @@ impl RecorderCtx {
         );
         let _ = gps.init();
         bridge(gps.status(), self.status, Some);
-        Sources { fixes: gps.stream_fixes(), imu: Some(gps.imu()) }
+        Sources { fixes: gps.stream_fixes(), imu: Some(gps.imu()), clock: Default::default() }
     }
 
     /// Where the phone is: the recording's (or capture's) latest fix, or the device GPS's first, if one comes soon.

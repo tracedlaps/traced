@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use futures::{StreamExt, stream::{self, BoxStream}};
 use tokio::{
     sync::{oneshot, watch},
@@ -8,6 +8,7 @@ use tokio::{
 };
 
 use crate::{
+    clock::Clock,
     gps::{GPSFix, GpsError},
     imu::{GForceSnapshot, GForces, GMeter, ImuSample},
     speedometer::{Speedometer, SpeedometerSnapshot},
@@ -27,11 +28,48 @@ pub struct Sources {
     pub fixes: BoxStream<'static, Result<GPSFix, GpsError>>,
     /// The accelerometer, if there is one.
     pub imu: Option<BoxStream<'static, ImuSample>>,
+    /// The time they arrive on: the device's, or a replay's.
+    pub clock: Clock,
 }
 
 impl From<BoxStream<'static, Result<GPSFix, GpsError>>> for Sources {
     fn from(fixes: BoxStream<'static, Result<GPSFix, GpsError>>) -> Self {
-        Self { fixes, imu: None }
+        Self { fixes, imu: None, clock: Clock::default() }
+    }
+}
+
+impl Sources {
+    /// Saved fixes and samples again, each when it came in, on a replay clock at `speed`×.
+    /// With `timed` (from, to), what came in until shortly before `from` and after `to` is sent
+    /// at once: skipped, yet still seen (so distance counts it and a gate crossed at `from` is detected).
+    pub fn replay(fixes: Vec<GPSFix>, samples: Vec<ImuSample>, speed: f64, timed: Option<(DateTime<Utc>, DateTime<Utc>)>) -> Self {
+        /// Played either side of `timed`, to see it coming and going.
+        const LEAD: TimeDelta = TimeDelta::seconds(3);
+        fn paced<T: Send + 'static>(
+            clock: &Clock,
+            (t0, t1): (DateTime<Utc>, DateTime<Utc>),
+            items: Vec<T>,
+            at: fn(&T) -> DateTime<Utc>,
+        ) -> BoxStream<'static, T> {
+            let (clock, start) = (clock.clone(), clock.now());
+            stream::iter(items)
+                .then(move |item| {
+                    let (clock, wait) = (clock.clone(), (at(&item).min(t1) - t0).to_std().unwrap_or_default());
+                    async move {
+                        clock.sleep_until(start + wait).await;
+                        item
+                    }
+                })
+                .boxed()
+        }
+        let clock = Clock::replay(speed);
+        let first = fixes.iter().map(|f| f.timestamp).chain(samples.iter().map(|s| s.timestamp)).min().unwrap_or_default();
+        let window = timed.map_or((first, DateTime::<Utc>::MAX_UTC), |(from, to)| (from - LEAD, to + LEAD));
+        Self {
+            fixes: paced(&clock, window, fixes, |f| f.timestamp).map(Ok).boxed(),
+            imu: (!samples.is_empty()).then(|| paced(&clock, window, samples, |s| s.timestamp)),
+            clock,
+        }
     }
 }
 
@@ -61,13 +99,15 @@ impl Recorder {
         journal: Option<Box<dyn FixConsumer + Send>>,
     ) -> Recording {
         let (speedometer, speed_rx) = Speedometer::new();
-        let (correlator, session) = track.map(|t| Correlator::new(t, reference)).unzip();
-        let (trace, trace_rx) = trace.then(Trace::new).unzip();
         let sources = sources.into();
+        let (correlator, session) = track.map(|t| Correlator::new(t, reference)).unzip();
+        let correlator = correlator.map(|c| c.on(sources.clock.clone()));
+        let (trace, trace_rx) = trace.then(Trace::new).unzip();
         let (g_meter, g_rx) = sources.imu.is_some().then(GMeter::new).unzip();
         let (fix, fix_rx) = watch::channel(None);
         let (stop, stop_rx) = oneshot::channel();
         Recording {
+            clock: sources.clock.clone(),
             fix: fix_rx,
             speedometer: speed_rx,
             session,
@@ -93,7 +133,7 @@ impl Recorder {
 
     async fn run(
         mut self,
-        Sources { mut fixes, imu }: Sources,
+        Sources { mut fixes, imu, .. }: Sources,
         mut stop: oneshot::Receiver<()>,
     ) -> RecordingSummary {
         // Fused: it may end before the fixes do.
@@ -149,6 +189,8 @@ impl Recorder {
 
 /// Handle to a running recording. Dropping it stops the recording.
 pub struct Recording {
+    /// What its lap clocks read on; set a replay's speed through it.
+    pub clock: Clock,
     /// The latest raw fix, e.g. to show where you are; `None` until the first one.
     pub fix: watch::Receiver<Option<GPSFix>>,
     pub speedometer: watch::Receiver<SpeedometerSnapshot>,
@@ -306,6 +348,38 @@ mod tests {
         assert!(matches!(&live.session.as_ref().unwrap().completed, Completed::Laps(l) if l.len() == 2));
         let journaled = journal.lock().unwrap().clone();
         assert_eq!(RecordingSummary::replay(live.started_at, journaled, Vec::new(), Some(track)), live);
+    }
+
+    #[tokio::test]
+    async fn replayed_sources_time_the_same_laps_on_their_clock() {
+        use crate::track::correlator::tests::{around, fix, square};
+        let track = square(&[(100.0, 50.0)]);
+        let fixes: Vec<_> = (0..100).map(|i| fix(around(i as f64 * 10.0), i as f64)).collect();
+        let saved = RecordingSummary::replay(Utc::now(), fixes.clone(), Vec::new(), Some(track.clone()));
+        let (real, sources) = (std::time::Instant::now(), Sources::replay(fixes, Vec::new(), 1000.0, None));
+        let mut rec = Recorder::start(sources, Some(track), None, false, saved.started_at, None);
+        while rec.speedometer.changed().await.is_ok() {}
+        assert!(real.elapsed() < std::time::Duration::from_secs(1)); // 99 s at 1000×
+        assert!(rec.clock.now() > real + std::time::Duration::from_secs(90));
+        assert_eq!(rec.stop().await, saved);
+    }
+
+    #[tokio::test]
+    async fn replay_of_the_timed_part_skips_the_ends_but_still_sees_them() {
+        use crate::track::correlator::tests::{around, fix, square};
+        let track = square(&[(100.0, 50.0)]);
+        // Parked for a minute, two laps, then parked another.
+        let parked = |t0: f64| (0..60).map(move |i| fix(around(0.0), t0 + i as f64));
+        let laps = (0..=80).map(|i| fix(around(i as f64 * 10.0), i as f64));
+        let fixes: Vec<_> = parked(-60.0).chain(laps).chain(parked(81.0)).collect();
+        let saved = RecordingSummary::replay(Utc::now(), fixes.clone(), Vec::new(), Some(track.clone()));
+        let timed = saved.session.as_ref().and_then(Session::timed);
+        let (real, sources) = (std::time::Instant::now(), Sources::replay(fixes, Vec::new(), 100.0, timed));
+        let mut rec = Recorder::start(sources, Some(track), None, false, saved.started_at, None);
+        while rec.speedometer.changed().await.is_ok() {}
+        // ~86 s, 3 s either side of the laps, at 100×: not 200 s.
+        assert!(real.elapsed() < std::time::Duration::from_millis(1300), "{:?}", real.elapsed());
+        assert_eq!(rec.stop().await, saved);
     }
 
     #[tokio::test]

@@ -166,6 +166,16 @@ pub fn reference(track: &Track) -> Option<Reference> {
     with_store("load best lap", |s| s.reference(track)).flatten()
 }
 
+/// Saved recording `id`'s fixes.
+pub fn fixes(id: Uuid) -> Vec<GPSFix> {
+    with_store("load fixes", |s| s.fixes(id)).unwrap_or_default()
+}
+
+/// Saved recording `id`'s fixes and samples, to replay; `None` without any fixes.
+pub fn replay_data(id: Uuid) -> Option<(Vec<GPSFix>, Vec<ImuSample>)> {
+    with_store("load recording", |s| Ok((s.fixes(id)?, s.samples(id)?))).filter(|(f, _)| !f.is_empty())
+}
+
 /// Saved recordings, newest first.
 pub fn recordings() -> Vec<SavedRecording> {
     with_store("load recordings", |s| s.recordings()).unwrap_or_default()

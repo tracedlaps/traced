@@ -18,7 +18,7 @@ pub fn Shell() -> Element {
     rsx! {
         div { class: "shell",
             if ctx.recording.read().is_some() {
-                Link { class: "live-bar", to: Route::Live {}, {t!("back-to-live")} }
+                Link { class: "live-bar", to: Route::Live {}, {if ctx.replaying.read().is_some() { t!("back-to-replay") } else { t!("back-to-live") }} }
             }
             Outlet::<Route> {}
             nav { class: "tabs",
