@@ -5,7 +5,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 pub=${PUBLIC_REPO:-$root/../tracedlabs}
 
 [ -d "$pub/.git" ] || git clone git@github.com:tracedlabs/tracedlabs.git "$pub"
-git -C "$pub" pull --ff-only
+git -C "$pub" ls-remote -q --exit-code origin main >/dev/null && git -C "$pub" pull --ff-only
 
 cd "$root" && dx bundle --package web --platform web --release
 find "$pub" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
@@ -13,4 +13,4 @@ cp -r target/dx/web/release/web/public/. "$pub"
 echo tracedlaps.com > "$pub/CNAME" && touch "$pub/.nojekyll"
 
 git -C "$pub" add -A
-git -C "$pub" commit -m "site: $(git rev-parse --short HEAD)" && git -C "$pub" push || echo "No changes"
+git -C "$pub" commit -m "site: $(git rev-parse --short HEAD)" && git -C "$pub" push -u origin HEAD:main || echo "No changes"
