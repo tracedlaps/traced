@@ -1,0 +1,4 @@
+<resources>
+    <!-- DayNight, not dx's Light: from targetSdk 33 the WebView's prefers-color-scheme follows the app theme -->
+    <style name="AppTheme" parent="@style/Theme.AppCompat.DayNight.NoActionBar" />
+</resources>
