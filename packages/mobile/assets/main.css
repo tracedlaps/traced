@@ -102,6 +102,8 @@ small.interrupted { color: var(--accent); }
 .track-map .sector.current { stroke-opacity: 0.9; }
 .track-map .gate { stroke: var(--muted); stroke-width: 2px; vector-effect: non-scaling-stroke; }
 .track-map .gate.boundary { stroke: var(--fg); stroke-width: 3px; }
+.track-map .arrow, .track-overlay .arrow { fill: none; stroke: var(--muted); stroke-width: 2px; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.track-card .track-map .arrow { display: none; }
 /* Glides over one fix interval (1 s on the mock), so it trails the latest fix by up to that. */
 .track-map .waypoint { fill: var(--bg); stroke: var(--muted); stroke-width: 2px; vector-effect: non-scaling-stroke; cursor: pointer; }
 .track-map .waypoint.gate { fill: var(--accent); stroke: var(--accent); }

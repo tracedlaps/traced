@@ -5,7 +5,7 @@ use std::sync::Arc;
 use resvg::{tiny_skia::Pixmap, usvg};
 use traced_core::track::Track;
 
-use crate::views::{lap_time, timed_m, track_map::Layout};
+use crate::views::track_map::Layout;
 
 const W: f64 = 1080.0;
 const H: f64 = 1350.0;
@@ -17,7 +17,8 @@ const SECTORS: [&str; 4] = ["#2563eb", "#0891b2", "#4f46e5", "#64748b"];
 
 /// Portrait (1080×1350) and self-contained: its CSS is scoped to `.traced-card` and
 /// the map's strokes are in the map's own units, so it previews inline in the webview too.
-pub fn card_svg(track: &Track, best_lap: Option<f64>) -> String {
+/// `stats` are up to three (label, value, accent) columns, already formatted.
+pub fn card_svg(track: &Track, stats: &[(String, String, bool)]) -> String {
     let layout = Layout::new(track);
     let [x, y, w, h] = layout.view_box;
     let [mx, my, mw, mh] = MAP;
@@ -29,12 +30,6 @@ pub fn card_svg(track: &Track, best_lap: Option<f64>) -> String {
         .fold(layout.markup(None), |m, (k, c)| {
             m.replace(&format!("var(--sector-{k})"), c)
         });
-    let m = timed_m(track);
-    let length = if m < 1000.0 {
-        format!("{m:.0} m")
-    } else {
-        format!("{:.2} km", m / 1000.0)
-    };
     let name = esc(&track.name);
     let name_size = (1700.0 / track.name.chars().count().max(1) as f64).min(104.0);
     let (_, tags) = track.tags.iter().fold((mx, String::new()), |(x, s), tag| {
@@ -46,15 +41,14 @@ pub fn card_svg(track: &Track, best_lap: Option<f64>) -> String {
         );
         (x + w + 14.0, s + &pill)
     });
-    let stats = [("Length", length), ("Sectors", track.sectors().count().to_string())]
-        .into_iter()
-        .chain(best_lap.map(|s| ("Best lap", lap_time(s))))
+    let stats = stats
+        .iter()
         .zip([mx, 400.0, 720.0])
-        .map(|((label, value), x)| {
+        .map(|((label, value, accent), x)| {
             format!(
                 r##"<text x="{x}" y="1200" font-size="28" letter-spacing="3" fill="#a8a29e">{}</text><text x="{x}" y="1262" font-size="56" fill="{}">{value}</text>"##,
-                label.to_uppercase(),
-                if label == "Best lap" { "#ea580c" } else { "#fafaf9" }
+                esc(&label.to_uppercase()),
+                if *accent { "#ea580c" } else { "#fafaf9" }
             )
         })
         .collect::<String>();
@@ -110,7 +104,9 @@ mod tests {
     fn presets_render_to_png() {
         for (i, p) in PRESETS.iter().enumerate() {
             let track = p.track.clone().build().unwrap();
-            let png = card_png(&card_svg(&track, (i == 0).then_some(52.34))).unwrap();
+            let stats = [("Length", "856 m", false), ("Sectors", "3", false), ("Best lap", "0:52.3", true)]
+                .map(|(l, v, a)| (l.into(), v.into(), a));
+            let png = card_png(&card_svg(&track, &stats[..2 + (i == 0) as usize])).unwrap();
             assert_eq!(png[..8], *b"\x89PNG\r\n\x1a\n");
             // IHDR's width and height, big-endian.
             assert_eq!(png[16..24], [0, 0, 4, 56, 0, 0, 5, 70]);

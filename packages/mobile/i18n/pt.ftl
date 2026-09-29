@@ -109,6 +109,7 @@ hint-selected = Arraste para o mover, ou apague-o.
 hint-draw = Toque no mapa para adicionar pontos. Arraste um para o mover, ou arraste um vazio para o inserir. Toque num para o apagar.
 hint-sectors = Toque nos pontos para adicionar ou remover linhas de setor.
 hint-gate = Toque num ponto para mover a linha para lá.
+reverse = Inverter
 undo = Anular
 delete-point = Apagar ponto
 name = Nome

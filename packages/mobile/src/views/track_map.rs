@@ -62,6 +62,8 @@ pub struct Layout {
     sectors: Vec<String>,
     /// Gate ends, and whether it's a start/finish gate (vs a sector gate).
     gates: Vec<(SvgPoint, SvgPoint, bool)>,
+    /// Chevrons along the outline, pointing the way it's driven.
+    arrows: Vec<String>,
     pub dot_r: f64,
 }
 
@@ -88,7 +90,11 @@ impl Layout {
             .collect();
 
         let (points, splits) = with_gate_points(track, &ordered, closed);
-        let curves = curves(&points, closed);
+        let beziers = curves(&points, closed);
+        let curves: Vec<_> = beziers
+            .iter()
+            .map(|[(ax, ay), (bx, by), (x, y)]| format!(" C{ax:.1} {ay:.1} {bx:.1} {by:.1} {x:.1} {y:.1}"))
+            .collect();
         let path = |from: usize, len: usize| {
             let (x, y) = points[from];
             let curves = (0..len).map(|j| curves[(from + j) % curves.len()].as_str());
@@ -129,6 +135,7 @@ impl Layout {
             outline: path(0, curves.len()) + if closed { " Z" } else { "" },
             sectors,
             gates,
+            arrows: arrows(&points, &beziers, extent / 6.0, extent / 60.0),
             dot_r: extent / 50.0,
         }
     }
@@ -146,7 +153,8 @@ impl Layout {
             let class = if boundary { "gate boundary" } else { "gate" };
             format!(r#"<line class="{class}" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"/>"#)
         });
-        format!(r#"<path class="outline" d="{}"/>"#, self.outline) + &sectors.chain(gates).collect::<String>()
+        let arrows = self.arrows.iter().map(|d| format!(r#"<path class="arrow" d="{d}"/>"#));
+        format!(r#"<path class="outline" d="{}"/>"#, self.outline) + &sectors.chain(gates).chain(arrows).collect::<String>()
     }
 }
 
@@ -200,10 +208,39 @@ fn with_gate_points(track: &Track, gates: &[&Gate], closed: bool) -> (Vec<SvgPoi
     (points, splits)
 }
 
-/// A smooth curve through `points` as one SVG cubic Bézier (` C…`) per consecutive pair:
+/// A `^` chevron of half-size `size` every `spacing` along the curves (first half a spacing in),
+/// pointing along them; placed by chord length, so only roughly evenly.
+fn arrows(points: &[SvgPoint], beziers: &[[SvgPoint; 3]], spacing: f64, size: f64) -> Vec<String> {
+    let mut next = spacing / 2.0;
+    let mut travelled = 0.0;
+    let mut arrows = Vec::new();
+    for (&p0, &[p1, p2, p3]) in points.iter().zip(beziers) {
+        let len = dist(p0, p3);
+        while len > 0.0 && next < travelled + len {
+            let t = (next - travelled) / len;
+            let u = 1.0 - t;
+            let lerp = |w: [f64; 4]| (w[0] * p0.0 + w[1] * p1.0 + w[2] * p2.0 + w[3] * p3.0, w[0] * p0.1 + w[1] * p1.1 + w[2] * p2.1 + w[3] * p3.1);
+            let (x, y) = lerp([u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t]);
+            let (dx, dy) = lerp([-u * u, u * u - 2.0 * u * t, 2.0 * u * t - t * t, t * t]);
+            let d = dx.hypot(dy);
+            if d > 0.0 {
+                let (dx, dy) = (dx / d * size, dy / d * size);
+                arrows.push(format!(
+                    "M{:.1} {:.1}L{:.1} {:.1}L{:.1} {:.1}",
+                    x - dx - dy, y - dy + dx, x + dx, y + dy, x - dx + dy, y - dy - dx
+                ));
+            }
+            next += spacing;
+        }
+        travelled += len;
+    }
+    arrows
+}
+
+/// A smooth curve through `points` as one cubic Bézier (control points and end) per consecutive pair:
 /// Catmull-Rom, with each tangent scaled to its segment's length so uneven waypoint spacing
 /// doesn't overshoot. Display only; timing uses the straight-segment polyline.
-fn curves(points: &[SvgPoint], closed: bool) -> Vec<String> {
+fn curves(points: &[SvgPoint], closed: bool) -> Vec<[SvgPoint; 3]> {
     let n = points.len() as isize;
     let at = |i: isize| match closed {
         true => points[i.rem_euclid(n) as usize],
@@ -223,14 +260,7 @@ fn curves(points: &[SvgPoint], closed: bool) -> Vec<String> {
         .map(|i| {
             let (p, q, m1, m2) = (at(i), at(i + 1), tangent(i), tangent(i + 1));
             let l = dist(p, q) / 3.0;
-            let (c1, c2) = (
-                (p.0 + m1.0 * l, p.1 + m1.1 * l),
-                (q.0 - m2.0 * l, q.1 - m2.1 * l),
-            );
-            format!(
-                " C{:.1} {:.1} {:.1} {:.1} {:.1} {:.1}",
-                c1.0, c1.1, c2.0, c2.1, q.0, q.1
-            )
+            [(p.0 + m1.0 * l, p.1 + m1.1 * l), (q.0 - m2.0 * l, q.1 - m2.1 * l), q]
         })
         .collect()
 }
@@ -263,10 +293,18 @@ mod tests {
         ];
         let closed = curves(&square, true);
         assert_eq!(closed.len(), 5);
-        assert!(closed[4].ends_with(" 0.0 0.0") && !closed.concat().contains("NaN"));
+        assert!(closed[4][2] == (0.0, 0.0) && closed.iter().flatten().all(|p| p.0.is_finite() && p.1.is_finite()));
         let open = curves(&square, false);
         assert_eq!(open.len(), 4);
-        assert!(open[3].ends_with(" 0.0 10.0"));
+        assert_eq!(open[3][2], (0.0, 10.0));
+    }
+
+    #[test]
+    fn arrows_point_the_way_the_waypoints_run() {
+        let line = [(0.0, 0.0), (100.0, 0.0)];
+        let arrows = arrows(&line, &curves(&line, false), 50.0, 5.0);
+        // Tips (the middle point) ahead of their arms in +x.
+        assert_eq!(arrows, ["M20.0 5.0L30.0 0.0L20.0 -5.0", "M70.0 5.0L80.0 0.0L70.0 -5.0"]);
     }
 
     #[test]

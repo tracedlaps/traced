@@ -109,6 +109,7 @@ hint-selected = Drag it to move it, or delete it.
 hint-draw = Tap the map to add waypoints. Drag to move one, or drag a hollow one to insert it. Tap one to delete it.
 hint-sectors = Tap waypoints to add or remove sector gates.
 hint-gate = Tap a waypoint to move the gate there.
+reverse = Reverse
 undo = Undo
 delete-point = Delete point
 name = Name

@@ -246,6 +246,21 @@ pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
                         },
                         {t!("undo")}
                     }
+                    button {
+                        class: "button secondary",
+                        disabled: draft.read().waypoints.len() < 2,
+                        onclick: move |_| {
+                            let mut d = draft();
+                            d.reverse();
+                            // An Open track's gates swap ends, so it's timed the other way too.
+                            if !d.closed {
+                                (d.start, d.finish) = (d.finish, d.start);
+                            }
+                            selected.set(None);
+                            commit(d);
+                        },
+                        {t!("reverse")}
+                    }
                     if let Some(i) = selected() {
                         button {
                             class: "stop",
@@ -515,10 +530,13 @@ impl Draft {
     }
 
     /// Moves a boundary gate onto waypoint `i` (replacing any sector gate there), or toggles one.
+    /// An Open track's start moved onto (or past) its finish runs the waypoints the other way.
     fn place(&mut self, mode: Mode, i: usize) {
         match mode {
             Mode::Draw => return,
+            Mode::Start if !self.closed && i == self.finish => (self.start, self.finish) = (i, self.start),
             Mode::Start => self.start = i,
+            Mode::Finish if !self.closed && i == self.start => (self.start, self.finish) = (self.finish, i),
             Mode::Finish => self.finish = i,
             Mode::Sector if self.is_boundary(i) => return,
             Mode::Sector => {
@@ -529,6 +547,17 @@ impl Draft {
             }
         }
         self.sectors.remove(&i);
+        if !self.closed && self.start > self.finish {
+            self.reverse();
+        }
+    }
+
+    /// Runs the waypoints the other way, each gate staying on its waypoint.
+    fn reverse(&mut self) {
+        let n = self.waypoints.len().saturating_sub(1);
+        self.waypoints.reverse();
+        (self.start, self.finish) = (n - self.start, n - self.finish);
+        self.sectors = self.sectors.iter().map(|&j| n - j).collect();
     }
 }
 
@@ -583,6 +612,25 @@ mod tests {
             draft.insert(i, p(i));
         }
         assert_eq!((draft.start, draft.finish), (0, 2));
+        assert!(draft.builder(false).build().is_ok());
+    }
+
+    #[test]
+    fn placing_the_start_past_the_finish_reverses_the_waypoints() {
+        let mut draft = Draft { waypoints: (0..3).map(p).collect(), finish: 2, ..Draft::default() };
+        draft.place(Mode::Sector, 1);
+        draft.place(Mode::Start, 2); // onto the finish: they swap
+        assert_eq!(draft.waypoints, [p(2), p(1), p(0)]);
+        assert_eq!((draft.start, draft.finish), (0, 2));
+        assert_eq!(draft.sectors, BTreeSet::from([1]));
+        assert!(draft.builder(false).build().is_ok());
+
+        draft.place(Mode::Finish, 0); // onto the start: they swap back
+        assert_eq!(draft.waypoints, [p(0), p(1), p(2)]);
+        assert_eq!((draft.start, draft.finish), (0, 2));
+        draft.place(Mode::Finish, 1);
+        draft.place(Mode::Start, 2); // past the finish
+        assert_eq!((draft.waypoints[draft.start], draft.waypoints[draft.finish]), (p(2), p(1)));
         assert!(draft.builder(false).build().is_ok());
     }
 
