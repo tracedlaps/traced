@@ -27,12 +27,12 @@ pub fn Import() -> Element {
             Ok(None) => {}
             Ok(Some(file)) => match std::fs::read_to_string(&file.path)
                 .map_err(|e| e.to_string())
-                .and_then(|text| import::waypoints(&text).map_err(|e| import_error(&e)))
+                .and_then(|text| import::track(&text).map_err(|e| import_error(&e)))
             {
-                Ok(w) => {
+                Ok(track) => {
                     let stem = file.name.rsplit_once('.').map_or(&*file.name, |(stem, _)| stem);
                     error.set(None);
-                    imported.set(Some(Draft::imported(stem.replace('_', " "), w)));
+                    imported.set(Some(Draft::from_file(stem.replace('_', " "), track)));
                 }
                 Err(e) => error.set(Some(format!("{}: {e}", file.name))),
             },
@@ -404,6 +404,15 @@ impl Draft {
             finish: w.len().saturating_sub(1),
             waypoints: w,
             ..Self::default()
+        }
+    }
+
+    /// The file's name and gates when it has them (a Traced export does), else guessed as `imported`.
+    fn from_file(stem: String, track: import::Imported) -> Self {
+        let name = track.name.clone().unwrap_or(stem);
+        match track.builder() {
+            Some(spec) => Self { uuid: None, name, ..Self::from_spec(&spec) },
+            None => Self::imported(name, track.waypoints),
         }
     }
 

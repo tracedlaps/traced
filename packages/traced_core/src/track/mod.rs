@@ -1,4 +1,5 @@
 pub(crate) mod correlator;
+pub mod export;
 pub mod import;
 mod session;
 pub mod trace;

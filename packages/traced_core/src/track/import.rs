@@ -1,8 +1,9 @@
-//! Waypoints from files other apps export: a CSV with lat/lon columns (e.g. Litchi), GPX or KML.
+//! Waypoints from files other apps export: a CSV with lat/lon columns (e.g. Litchi), GPX or KML;
+//! and whole tracks from a GPX `export::gpx` wrote.
 
 use geo::{Distance, Haversine};
 
-use super::Waypoint;
+use super::{Track, TrackBuilder, TrackShape, Waypoint};
 
 /// A path ending closer than this (m) to its start looks like a loop.
 const CLOSED_GAP: f64 = 30.0;
@@ -17,14 +18,41 @@ pub enum ImportError {
     Xml(#[from] roxmltree::Error),
 }
 
-/// The file's waypoints in path order; the format is told from the content.
-pub fn waypoints(text: &str) -> Result<Vec<Waypoint>, ImportError> {
+/// What a file holds: always a path, and whatever of the rest of a track it carries.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Imported {
+    pub name: Option<String>,
+    pub tags: Vec<String>,
+    pub waypoints: Vec<Waypoint>,
+    /// From GPX `wpt`s typed `start` (and `finish`, if Open).
+    pub shape: Option<TrackShape>,
+    /// From GPX `wpt`s typed `sector`, in file order.
+    pub sectors: Vec<Waypoint>,
+}
+
+impl Imported {
+    /// The whole track, if the file places its gates; unnamed if it has no name.
+    pub fn builder(&self) -> Option<TrackBuilder> {
+        let track = Track::builder(self.name.clone().unwrap_or_default(), self.shape?)
+            .tags(self.tags.clone())
+            .waypoints(self.waypoints.clone());
+        Some(self.sectors.iter().fold(track, |b, &s| b.sector_gate_at(s)))
+    }
+}
+
+/// The file's track; the format is told from the content.
+pub fn track(text: &str) -> Result<Imported, ImportError> {
     let text = text.trim_start_matches('\u{feff}').trim_start();
     if text.starts_with('<') {
         xml(text)
     } else {
-        csv(text)
+        csv(text).map(|waypoints| Imported { waypoints, ..Default::default() })
     }
+}
+
+/// The file's waypoints in path order.
+pub fn waypoints(text: &str) -> Result<Vec<Waypoint>, ImportError> {
+    track(text).map(|t| t.waypoints)
 }
 
 /// Whether the path ends back near its start, i.e. is likely a Closed track.
@@ -58,25 +86,42 @@ fn csv(text: &str) -> Result<Vec<Waypoint>, ImportError> {
         .collect()
 }
 
-/// GPX: a track's points, else a route's, else loose waypoints.
+/// GPX: a track's points, else a route's, else loose waypoints; the metadata's name and keywords;
+/// and gates from `wpt`s typed `start`, `finish` or `sector`.
 /// KML: the first line's coordinates, else every placemark's in order.
-fn xml(text: &str) -> Result<Vec<Waypoint>, ImportError> {
+fn xml(text: &str) -> Result<Imported, ImportError> {
     let doc = roxmltree::Document::parse(text)?;
     let named = |tag: &'static str| {
         doc.descendants()
             .filter(move |n| n.tag_name().name() == tag)
     };
+    fn child<'a>(n: roxmltree::Node<'a, '_>, tag: &str) -> Option<&'a str> {
+        n.children().find(|c| c.tag_name().name() == tag)?.text()
+    }
+    let point = |n: roxmltree::Node| {
+        Some(Waypoint::new(
+            n.attribute("lon")?.parse().ok()?,
+            n.attribute("lat")?.parse().ok()?,
+        ))
+    };
+    let typed = |kind| named("wpt").filter(move |&n| child(n, "type") == Some(kind)).filter_map(point);
     for tag in ["trkpt", "rtept", "wpt"] {
-        let points: Vec<_> = named(tag)
-            .filter_map(|n| {
-                Some(Waypoint::new(
-                    n.attribute("lon")?.parse().ok()?,
-                    n.attribute("lat")?.parse().ok()?,
-                ))
-            })
-            .collect();
-        if !points.is_empty() {
-            return Ok(points);
+        let waypoints: Vec<_> = named(tag).filter_map(point).collect();
+        if !waypoints.is_empty() {
+            let metadata = |tag| named("metadata").next().and_then(|m| child(m, tag));
+            let shape = match (typed("start").next(), typed("finish").next()) {
+                (Some(start), Some(finish)) => Some(TrackShape::Open { start, finish }),
+                (Some(gate), None) => Some(TrackShape::Closed { gate }),
+                _ => None,
+            };
+            let tags = metadata("keywords").unwrap_or_default().split(',').map(str::trim);
+            return Ok(Imported {
+                name: metadata("name").map(Into::into),
+                tags: tags.filter(|t| !t.is_empty()).map(Into::into).collect(),
+                waypoints,
+                shape,
+                sectors: typed("sector").collect(),
+            });
         }
     }
     let mut coords: Vec<_> = named("coordinates").collect();
@@ -100,7 +145,7 @@ fn xml(text: &str) -> Result<Vec<Waypoint>, ImportError> {
     if points.is_empty() {
         Err(ImportError::Unrecognised)
     } else {
-        Ok(points)
+        Ok(Imported { waypoints: points, ..Default::default() })
     }
 }
 
@@ -153,6 +198,32 @@ mod tests {
             lon_lat(&waypoints(gpx).unwrap()),
             [(6.21, 49.81), (6.22, 49.82)]
         );
+    }
+
+    #[test]
+    fn reads_gpx_gates_from_typed_waypoints() {
+        let gpx = r#"<gpx><metadata><name>A &amp; B</name><keywords>karting, indoor</keywords></metadata>
+              <wpt lat="49.81" lon="6.21"><type>start</type></wpt>
+              <wpt lat="49.82" lon="6.22"><type>sector</type></wpt>
+              <wpt lat="49.83" lon="6.23"/>
+              <trk><trkseg><trkpt lat="49.81" lon="6.21"/><trkpt lat="49.82" lon="6.22"/></trkseg></trk>
+            </gpx>"#;
+        let t = track(gpx).unwrap();
+        assert_eq!(t.name.as_deref(), Some("A & B"));
+        assert_eq!(t.tags, ["karting", "indoor"]);
+        assert_eq!(t.shape, Some(TrackShape::Closed { gate: Waypoint::new(6.21, 49.81) }));
+        assert_eq!(lon_lat(&t.sectors), [(6.22, 49.82)]);
+        assert_eq!(lon_lat(&t.waypoints), [(6.21, 49.81), (6.22, 49.82)]);
+    }
+
+    #[test]
+    fn other_files_carry_no_gates() {
+        let untyped = r#"<gpx><wpt lat="49.81" lon="6.21"/><wpt lat="49.82" lon="6.22"/></gpx>"#;
+        for text in [untyped, "lat,lon\n49.81,6.21\n49.82,6.22"] {
+            let t = track(text).unwrap();
+            assert!(t.shape.is_none() && t.builder().is_none());
+            assert_eq!(lon_lat(&t.waypoints), [(6.21, 49.81), (6.22, 49.82)]);
+        }
     }
 
     #[test]
