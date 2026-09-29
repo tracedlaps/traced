@@ -12,6 +12,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.WindowManager
@@ -50,6 +51,8 @@ class GpsPlugin(
     @Volatile private var source: String? = null
 
     @Volatile private var satellitesUsed = 0
+
+    private var askedBatteryExemption = false
 
     private val fusedCallback =
         object : LocationCallback() {
@@ -133,6 +136,7 @@ class GpsPlugin(
                 activity.stopService(service)
             } else if (hasPermission()) {
                 ContextCompat.startForegroundService(activity, service)
+                askBatteryExemption()
             }
             ok(null)
         }
@@ -208,6 +212,19 @@ class GpsPlugin(
 
     private fun hasPermission(): Boolean =
         ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * Once per app run, asks to lift battery optimisation: OEM battery managers (e.g. OnePlus's) kill
+     * even a foreground service after minutes with the screen off. The APK is sideloaded, so Play's limits on this don't apply.
+     */
+    @SuppressLint("BatteryLife")
+    private fun askBatteryExemption() {
+        val power = activity.getSystemService(PowerManager::class.java)
+        if (askedBatteryExemption || power.isIgnoringBatteryOptimizations(activity.packageName)) return
+        askedBatteryExemption = true
+        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.fromParts("package", activity.packageName, null))
+        activity.runOnUiThread { activity.startActivity(intent) }
+    }
 
     /** Shows the recording notification; implied before Android 13. */
     private fun hasNotificationPermission(): Boolean =
