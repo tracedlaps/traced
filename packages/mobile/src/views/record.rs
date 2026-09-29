@@ -58,7 +58,10 @@ pub fn Tracks() -> Element {
                 }
             }
             if let Some(t) = tracks.read().get(selected()) {
-                Link { class: "button secondary", to: Route::EditTrack { id: t.uuid }, {t!("edit-track")} }
+                div { class: "row",
+                    Link { class: "button secondary", to: Route::EditTrack { id: t.uuid }, {t!("edit-track")} }
+                    Link { class: "button secondary", to: Route::ShareTrack { id: t.uuid }, {t!("share")} }
+                }
             }
             StartPanel { track: Some(selected()) }
         }

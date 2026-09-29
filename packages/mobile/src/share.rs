@@ -61,7 +61,8 @@ pub fn card_svg(track: &Track, stats: &[(String, String, bool)]) -> String {
 .traced-card .outline {{ stroke: #fafaf9; stroke-opacity: .12; stroke-width: {o} }}
 .traced-card .sector {{ stroke-width: {s} }}
 .traced-card .gate {{ stroke: #a8a29e; stroke-linecap: round; stroke-width: {g} }}
-.traced-card .gate.boundary {{ stroke: #fafaf9; stroke-width: {b} }}</style>
+.traced-card .gate.boundary {{ stroke: #fafaf9; stroke-width: {b} }}
+.traced-card .arrow {{ display: none }}</style>
 <rect width="{W}" height="{H}" fill="#111317"/>{icon}
 <text x="166" y="124" font-size="52" fill="#ea580c">Traced</text>
 <svg x="{mx}" y="{my}" width="{mw}" height="{mh}" viewBox="{x} {y} {w} {h}">{map}</svg>

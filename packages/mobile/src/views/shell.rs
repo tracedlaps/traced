@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 
-use crate::{recorder::RecorderCtx, Route};
+use crate::{recorder::RecorderCtx, storage::PickedFile, Route};
 
 // 24×24 stroke icons.
 const HISTORY: &str = "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 3";
@@ -15,6 +15,12 @@ const SETTINGS: &str = "M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M
 pub fn Shell() -> Element {
     let ctx = use_context::<RecorderCtx>();
     let route = use_route::<Route>();
+    let incoming = use_context::<Signal<Option<PickedFile>>>();
+    use_effect(move || {
+        if incoming.read().is_some() {
+            navigator().push(Route::Import {});
+        }
+    });
 
     rsx! {
         div { class: "shell",
@@ -25,7 +31,7 @@ pub fn Shell() -> Element {
             nav { class: "tabs",
                 Tab { to: Route::History {}, icon: HISTORY, label: t!("tab-history"),
                     active: matches!(route, Route::History {} | Route::SavedResults { .. }) }
-                Tab { to: Route::Tracks {}, icon: TRACKS, label: t!("tab-tracks"), active: route == Route::Tracks {} }
+                Tab { to: Route::Tracks {}, icon: TRACKS, label: t!("tab-tracks"), active: matches!(route, Route::Tracks {} | Route::ShareTrack { .. }) }
                 Tab { to: Route::Speedometer {}, icon: SPEEDO, label: t!("tab-speed"), active: route == Route::Speedometer {} }
                 Tab { to: Route::Import {}, icon: EDITOR, label: t!("tab-editor"),
                     active: matches!(route, Route::Import {} | Route::NewTrack {} | Route::RecordTrack {} | Route::EditTrack { .. }) }

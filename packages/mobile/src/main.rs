@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use recorder::RecorderCtx;
 use uuid::Uuid;
 use views::{
-    EditTrack, History, Import, Live, NewTrack, RecordTrack, Results, SavedResults, Settings, Shell, Speedometer, Tracks,
+    EditTrack, History, Import, Live, NewTrack, RecordTrack, Results, SavedResults, Settings, ShareTrack, Shell, Speedometer, Tracks,
 };
 
 #[cfg(target_os = "android")]
@@ -31,6 +31,8 @@ enum Route {
         Speedometer {},
         #[route("/tracks")]
         Tracks {},
+        #[route("/tracks/:id/share")]
+        ShareTrack { id: Uuid },
         #[route("/editor")]
         Import {},
         #[route("/editor/new")]
@@ -63,6 +65,18 @@ fn App() -> Element {
     let tracks = use_signal(storage::load_tracks);
     use_context_provider(|| tracks);
     prefs::use_prefs();
+    // A track file opened from another app (e.g. WhatsApp), for the editor to import.
+    let incoming = use_signal(storage::take_incoming);
+    use_context_provider(|| incoming);
+    #[cfg(target_os = "android")]
+    dioxus::mobile::use_wry_event_handler(move |e, _| {
+        if matches!(e, dioxus::mobile::tao::event::Event::Resumed) {
+            if let Some(file) = storage::take_incoming() {
+                let mut incoming = incoming;
+                incoming.set(Some(file));
+            }
+        }
+    });
 
     rsx! {
         document::Stylesheet { href: MAIN_CSS }

@@ -22,20 +22,28 @@ pub fn Import() -> Element {
         return rsx! { Editor { initial, on_close: move |_| imported.set(None) } };
     }
 
+    let mut load = move |file: storage::PickedFile| match std::fs::read_to_string(&file.path)
+        .map_err(|e| e.to_string())
+        .and_then(|text| import::track(&text).map_err(|e| import_error(&e)))
+    {
+        Ok(track) => {
+            let stem = file.name.rsplit_once('.').map_or(&*file.name, |(stem, _)| stem);
+            error.set(None);
+            imported.set(Some(Draft::from_file(stem.replace('_', " "), track)));
+        }
+        Err(e) => error.set(Some(format!("{}: {e}", file.name))),
+    };
+    // A file opened from another app lands here.
+    let mut incoming = use_context::<Signal<Option<storage::PickedFile>>>();
+    use_effect(move || {
+        if let Some(file) = incoming.write().take() {
+            load(file);
+        }
+    });
     let pick = move |_| async move {
         match storage::pick_file().await {
             Ok(None) => {}
-            Ok(Some(file)) => match std::fs::read_to_string(&file.path)
-                .map_err(|e| e.to_string())
-                .and_then(|text| import::track(&text).map_err(|e| import_error(&e)))
-            {
-                Ok(track) => {
-                    let stem = file.name.rsplit_once('.').map_or(&*file.name, |(stem, _)| stem);
-                    error.set(None);
-                    imported.set(Some(Draft::from_file(stem.replace('_', " "), track)));
-                }
-                Err(e) => error.set(Some(format!("{}: {e}", file.name))),
-            },
+            Ok(Some(file)) => load(file),
             Err(e) => error.set(Some(e)),
         }
     };

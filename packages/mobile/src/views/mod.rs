@@ -7,6 +7,7 @@ mod map;
 mod record;
 mod results;
 mod settings;
+mod share;
 mod shell;
 pub(crate) mod track_map;
 
@@ -17,6 +18,7 @@ pub use live::Live;
 pub use record::{Speedometer, Tracks};
 pub use results::Results;
 pub use settings::Settings;
+pub use share::ShareTrack;
 pub use shell::Shell;
 use chrono::TimeDelta;
 use dioxus::prelude::*;

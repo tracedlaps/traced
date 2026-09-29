@@ -180,3 +180,16 @@ replay = Replay
 end-replay = End replay
 replay-ended = Replay finished.
 replay-trim = Skip before the start and after the finish
+
+## Share
+share = Share
+share-track = Share track
+share-with-best = Show my best lap
+share-with-gpx = Attach the track file (GPX)
+save-image = Save image
+save-gpx = Save track file (GPX)
+share-saved = Saved.
+share-failed = Couldn't share: { $error }
+card-length = Length
+card-sectors = Sectors
+card-best-lap = Best lap

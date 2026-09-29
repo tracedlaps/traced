@@ -180,3 +180,16 @@ replay = Reproduzir
 end-replay = Terminar reprodução
 replay-ended = Reprodução terminada.
 replay-trim = Saltar antes da partida e depois da chegada
+
+## Partilhar
+share = Partilhar
+share-track = Partilhar pista
+share-with-best = Mostrar a minha melhor volta
+share-with-gpx = Anexar o ficheiro da pista (GPX)
+save-image = Guardar imagem
+save-gpx = Guardar ficheiro da pista (GPX)
+share-saved = Guardado.
+share-failed = Não foi possível partilhar: { $error }
+card-length = Extensão
+card-sectors = Setores
+card-best-lap = Melhor volta
