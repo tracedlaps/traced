@@ -28,6 +28,10 @@ mod plugin {
     extern "Kotlin" {
         pub type StoragePlugin;
         pub fn data_dir(this: &StoragePlugin) -> String;
+        pub fn cache_dir(this: &StoragePlugin) -> String;
+        /// `paths` newline-separated.
+        pub fn share_files(this: &StoragePlugin, paths: &str, title: &str) -> String;
+        pub fn take_incoming(this: &StoragePlugin) -> String;
         /// Blocks until the user picks or cancels: call from `spawn_blocking`.
         pub fn pick_file(this: &StoragePlugin) -> String;
         /// Blocks until the user saves or cancels: call from `spawn_blocking`.
@@ -39,9 +43,9 @@ mod plugin {
             .map(StoragePlugin::from_global_ref)
     }
 
-    /// Runs a blocking plugin call off the UI thread and unwraps its reply envelope.
-    pub async fn call<T: serde::de::DeserializeOwned + Send + 'static>(
-        f: impl FnOnce(&StoragePlugin) -> Result<String, String> + Send + 'static,
+    /// Makes a plugin call and unwraps its reply envelope.
+    pub fn call_now<T: serde::de::DeserializeOwned>(
+        f: impl FnOnce(&StoragePlugin) -> Result<String, String>,
     ) -> Result<T, String> {
         #[derive(serde::Deserialize)]
         struct Reply {
@@ -51,16 +55,21 @@ mod plugin {
             #[serde(default)]
             detail: String,
         }
-        tokio::task::spawn_blocking(move || {
-            let plugin = construct().ok_or("the storage plugin failed to load")?;
-            let reply: Reply = serde_json::from_str(&f(&plugin)?).map_err(|e| e.to_string())?;
-            if !reply.ok {
-                return Err(reply.detail);
-            }
-            T::deserialize(reply.data).map_err(|e| e.to_string())
-        })
-        .await
-        .map_err(|e| e.to_string())?
+        let plugin = construct().ok_or("the storage plugin failed to load")?;
+        let reply: Reply = serde_json::from_str(&f(&plugin)?).map_err(|e| e.to_string())?;
+        if !reply.ok {
+            return Err(reply.detail);
+        }
+        T::deserialize(reply.data).map_err(|e| e.to_string())
+    }
+
+    /// `call_now` off the UI thread, for calls that block.
+    pub async fn call<T: serde::de::DeserializeOwned + Send + 'static>(
+        f: impl FnOnce(&StoragePlugin) -> Result<String, String> + Send + 'static,
+    ) -> Result<T, String> {
+        tokio::task::spawn_blocking(move || call_now(f))
+            .await
+            .map_err(|e| e.to_string())?
     }
 }
 
@@ -225,32 +234,70 @@ pub async fn pick_file() -> Result<Option<PickedFile>, String> {
         }))
 }
 
-/// Exports everything to a file the user chooses; `Ok(false)` if they cancel.
-pub async fn export_backup() -> Result<bool, String> {
-    let name = format!("traced-{}.db", chrono::Local::now().format("%Y-%m-%d"));
-    let store = |path: PathBuf| {
-        with_store("export", |s| s.export(&path)).ok_or("export failed".to_string())
-    };
+/// A file another app opened or shared with Traced, once: on Android a copy in the app's cache.
+pub fn take_incoming() -> Option<PickedFile> {
+    #[cfg(target_os = "android")]
+    return plugin::call_now(plugin::take_incoming)
+        .inspect_err(|e| warn!("take incoming file: {e}"))
+        .ok()
+        .flatten();
 
+    #[cfg(not(target_os = "android"))]
+    None
+}
+
+/// An empty scratch dir to write files to share or save into. Emptied on each call, so a share
+/// must get it once; on Android the only place `share_files` can share from.
+pub fn share_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "android")]
+    let dir = plugin::cache_dir(&plugin::construct()?)
+        .ok()
+        .map(|d| PathBuf::from(d).join("share"));
+    #[cfg(not(target_os = "android"))]
+    let dir = dirs::cache_dir().map(|d| d.join("traced/share"));
+    let dir = dir?;
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).inspect_err(|e| warn!("share dir: {e}")).ok()?;
+    Some(dir)
+}
+
+/// Opens the system share sheet for `files` (in `share_dir`); returns once it's up.
+/// `Err` off Android, where there's no share sheet.
+pub async fn share_files(files: Vec<PathBuf>, title: String) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        let path = data_dir().ok_or("no data dir")?.join("export.db");
-        store(path.clone())?;
-        let arg = path.to_string_lossy().into_owned();
-        let saved = plugin::call(move |p| plugin::save_file(p, &arg, &name)).await;
-        let _ = fs::remove_file(&path);
-        saved
+        let paths = files.iter().map(|f| f.to_string_lossy()).collect::<Vec<_>>().join("\n");
+        plugin::call(move |p| plugin::share_files(p, &paths, &title)).await
     }
 
     #[cfg(not(target_os = "android"))]
-    match rfd::AsyncFileDialog::new()
-        .set_file_name(&name)
-        .save_file()
-        .await
     {
-        Some(file) => store(file.path().into()).map(|()| true),
+        let _ = (files, title);
+        Err("sharing is only on Android".into())
+    }
+}
+
+/// Asks where to save a copy of `path`, offering `name`; `Ok(false)` if they cancel.
+pub async fn save_file(path: PathBuf, name: String) -> Result<bool, String> {
+    #[cfg(target_os = "android")]
+    {
+        let path = path.to_string_lossy().into_owned();
+        plugin::call(move |p| plugin::save_file(p, &path, &name)).await
+    }
+
+    #[cfg(not(target_os = "android"))]
+    match rfd::AsyncFileDialog::new().set_file_name(&name).save_file().await {
+        Some(to) => fs::copy(&path, to.path()).map(|_| true).map_err(|e| e.to_string()),
         None => Ok(false),
     }
+}
+
+/// Exports everything to a file the user chooses; `Ok(false)` if they cancel.
+pub async fn export_backup() -> Result<bool, String> {
+    let name = format!("traced-{}.db", chrono::Local::now().format("%Y-%m-%d"));
+    let path = share_dir().ok_or("no share dir")?.join(&name);
+    with_store("export", |s| s.export(&path)).ok_or("export failed")?;
+    save_file(path, name).await
 }
 
 /// Replaces everything with a backup the user picks; `Ok(false)` if they cancel.
