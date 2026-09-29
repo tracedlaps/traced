@@ -1,7 +1,10 @@
 package dev.dioxus.main
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
 import android.os.Build
+import android.os.Bundle
 import androidx.activity.result.contract.ActivityResultContracts
 import dev.traced.gps.GpsPlugin
 import dev.traced.storage.StoragePlugin
@@ -20,8 +23,14 @@ class MainActivity : WryActivity() {
         }
     private val filePicker =
         registerForActivityResult(ActivityResultContracts.OpenDocument(), StoragePlugin::onFileChosen)
+    // CreateDocument fixes its MIME type at registration; this one takes it from each file's name.
     private val fileSaver =
-        registerForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.sqlite3"), StoragePlugin::onFileChosen)
+        registerForActivityResult(
+            object : ActivityResultContracts.CreateDocument("*/*") {
+                override fun createIntent(context: Context, input: String) = super.createIntent(context, input).setType(StoragePlugin.mimeOf(input))
+            },
+            StoragePlugin::onFileChosen,
+        )
 
     init {
         GpsPlugin.requestLocationPermission = {
@@ -32,5 +41,17 @@ class MainActivity : WryActivity() {
         // CSV, GPX and KML have no reliable MIME types, so any file; the parser tells them apart.
         StoragePlugin.launchFilePicker = { filePicker.launch(arrayOf("*/*")) }
         StoragePlugin.launchFileSaver = { name -> fileSaver.launch(name) }
+    }
+
+    // A .gpx opened with or shared to Traced (the storage module's intent filters). Received before
+    // super.onCreate starts Rust, so it can take it on start; on onNewIntent, Rust takes it on resume.
+    override fun onCreate(savedInstanceState: Bundle?) {
+        if (savedInstanceState == null) StoragePlugin.receive(this, intent)
+        super.onCreate(savedInstanceState)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        StoragePlugin.receive(this, intent)
     }
 }
