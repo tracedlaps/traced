@@ -59,9 +59,22 @@ impl Language {
     }
 }
 
+/// The live map: following the dot, or the whole track.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MapView {
+    Follow,
+    Overview,
+}
+
+impl Choice for MapView {
+    const KEY: &'static str = "live-map";
+    const OPTIONS: &'static [(Self, &'static str)] = &[(Self::Follow, "follow"), (Self::Overview, "overview")];
+}
+
 /// Provides every preference to the app as a signal, and applies theme and language as they change.
 pub fn use_prefs() {
     use_context_provider(|| Signal::new(Units::load()));
+    use_context_provider(|| Signal::new(MapView::load()));
     let theme = use_context_provider(|| Signal::new(Theme::load()));
     let language = use_context_provider(|| Signal::new(Language::load()));
     // `main.css` reads it; "system" leaves it to `prefers-color-scheme`.
@@ -72,6 +85,7 @@ pub fn use_prefs() {
 /// Rereads every preference, after a restore replaced them.
 pub fn reload() {
     consume_context::<Signal<Units>>().set(Units::load());
+    consume_context::<Signal<MapView>>().set(MapView::load());
     consume_context::<Signal<Theme>>().set(Theme::load());
     consume_context::<Signal<Language>>().set(Language::load());
 }

@@ -385,7 +385,7 @@ fn overlay(track: &Track) -> Overlay {
     let at = |x: f64, y: f64| LatLng::from(track.projection.unproject(Waypoint::new(x, 0.0 - y)));
     Overlay {
         view_box: format!("{x} {y} {w} {h}"),
-        svg: layout.markup(None),
+        svg: layout.markup(None, None),
         bounds: [at(x, y + h), at(x + w, y)],
     }
 }

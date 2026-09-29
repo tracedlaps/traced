@@ -1,13 +1,23 @@
 use dioxus::prelude::*;
 use traced_core::track::{Boundary, Gate, LiveStatus, Track, Waypoint};
 
-use crate::recorder::RecorderCtx;
+use crate::{
+    prefs::{Choice, MapView},
+    recorder::RecorderCtx,
+};
 
 /// The recording's track outline and gates, with a dot at the latest fix. North up,
 /// drawn in the track's own projected metres (SVG y points down, hence the flipped y).
+/// Follows the dot, fading out at the edges, or shows the whole track; tapping switches.
 #[component]
 pub fn TrackMap() -> Element {
     let ctx = use_context::<RecorderCtx>();
+    let mut view = use_context::<Signal<MapView>>();
+    let toggle = move |_| {
+        let next = if view() == MapView::Follow { MapView::Overview } else { MapView::Follow };
+        next.save();
+        view.set(next);
+    };
     // Only re-derived when the track changes, not on every fix.
     let layout = use_memo(move || ctx.track.read().as_deref().map(Layout::new));
     let Some(layout) = layout() else {
@@ -26,8 +36,34 @@ pub fn TrackMap() -> Element {
         _ => None,
     };
 
+    if view() == MapView::Follow {
+        // Waits at the start gate for the first fix, so the zoom doesn't jump when it comes.
+        let (x, y) = dot.unwrap_or(layout.gates[0].0);
+        let w = layout.follow_window();
+        // Ten times as tall as wide, then sliced to the element: the scale comes from its width alone,
+        // so it holds while the panels below grow and shrink the map's height.
+        let (h, x, y) = (10.0 * w, -x, -y);
+        let (left, top) = (-w / 2.0, -h / 2.0);
+        // The track glides under a still dot, at the pace the dot would have.
+        return rsx! {
+            svg {
+                class: "track-map follow",
+                view_box: "{left} {top} {w} {h}",
+                preserve_aspect_ratio: "xMidYMid slice",
+                onclick: toggle,
+                g {
+                    style: "transform: translate({x}px, {y}px); transition-duration: {glide}s",
+                    dangerous_inner_html: layout.markup(current, None),
+                }
+                if dot.is_some() {
+                    circle { class: "you", r: w / 40.0 }
+                }
+            }
+        };
+    }
+
     rsx! {
-        TrackSvg { layout: layout.clone(), current,
+        TrackSvg { layout: layout.clone(), current, onclick: toggle,
             if let Some((x, y)) = dot {
                 // Positioned by transform, so CSS can glide it from one fix to the next.
                 circle {
@@ -43,11 +79,11 @@ pub fn TrackMap() -> Element {
 /// A track's outline, sectors (`current` highlighted) and gates; `children` draw on top,
 /// in the same coordinates (see `svg_point`).
 #[component]
-pub fn TrackSvg(layout: Layout, current: Option<usize>, children: Element) -> Element {
+pub fn TrackSvg(layout: Layout, current: Option<usize>, onclick: Option<EventHandler<MouseEvent>>, children: Element) -> Element {
     let [x, y, w, h] = layout.view_box;
     rsx! {
-        svg { class: "track-map", view_box: "{x} {y} {w} {h}",
-            g { dangerous_inner_html: layout.markup(current) }
+        svg { class: "track-map", view_box: "{x} {y} {w} {h}", onclick: move |e| if let Some(f) = onclick { f.call(e) },
+            g { dangerous_inner_html: layout.markup(current, Some(layout.gate_half())) }
             {children}
         }
     }
@@ -60,8 +96,10 @@ pub struct Layout {
     outline: String,
     /// One path per sector, in travel order.
     sectors: Vec<String>,
-    /// Gate ends, and whether it's a start/finish gate (vs a sector gate).
+    /// Gate centres, half the gate as a vector from there, and whether it's a start/finish gate (vs a sector gate).
     gates: Vec<(SvgPoint, SvgPoint, bool)>,
+    /// The drawing's larger side, without padding.
+    extent: f64,
     /// Chevrons along the outline, pointing the way it's driven.
     arrows: Vec<String>,
     pub dot_r: f64,
@@ -81,11 +119,8 @@ impl Layout {
             .map(|(i, g)| {
                 let seg = g.segment();
                 let boundary = i == 0 || i == ordered.len() - 1 && !closed;
-                (
-                    (seg.start.x, -seg.start.y),
-                    (seg.end.x, -seg.end.y),
-                    boundary,
-                )
+                let half = ((seg.end.x - seg.start.x) / 2.0, (seg.start.y - seg.end.y) / 2.0);
+                ((seg.start.x + half.0, half.1 - seg.start.y), half, boundary)
             })
             .collect();
 
@@ -115,10 +150,8 @@ impl Layout {
             })
             .collect();
 
-        let all = points
-            .iter()
-            .chain(gates.iter().flat_map(|(a, b, _)| [a, b]));
-        let (min_x, min_y, max_x, max_y) = all.fold(
+        // Gates fit in the padding, drawn at `gate_half`.
+        let (min_x, min_y, max_x, max_y) = points.iter().fold(
             (f64::MAX, f64::MAX, f64::MIN, f64::MIN),
             |(x0, y0, x1, y1), &(x, y)| (x0.min(x), y0.min(y), x1.max(x), y1.max(y)),
         );
@@ -135,6 +168,7 @@ impl Layout {
             outline: path(0, curves.len()) + if closed { " Z" } else { "" },
             sectors,
             gates,
+            extent,
             arrows: arrows(&points, &beziers, extent / 6.0, extent / 60.0),
             dot_r: extent / 50.0,
         }
@@ -142,14 +176,28 @@ impl Layout {
 }
 
 impl Layout {
+    /// Gates' half-length when drawing the whole track: the same share of it on every track,
+    /// where their real 30 m would be a stub on a long one and a bar across a short one.
+    pub fn gate_half(&self) -> f64 {
+        self.extent / 24.0
+    }
+
+    /// The width (m) seen when following the dot: most of a karting track,
+    /// or a long stretch of road.
+    pub fn follow_window(&self) -> f64 {
+        (self.extent / 1.5).clamp(200.0, 600.0)
+    }
+
     /// The outline, sectors (`current` highlighted) and gates as SVG elements, for `TrackSvg`
-    /// and the map editor's overlay alike.
-    pub fn markup(&self, current: Option<usize>) -> String {
+    /// and the map editor's overlay alike. Gates are `gate_half` either side, or their real size.
+    pub fn markup(&self, current: Option<usize>, gate_half: Option<f64>) -> String {
         let sectors = self.sectors.iter().enumerate().map(|(k, d)| {
             let class = if current == Some(k) { "sector current" } else { "sector" };
             format!(r#"<path class="{class}" style="stroke: var(--sector-{})" d="{d}"/>"#, k % 4)
         });
-        let gates = self.gates.iter().map(|&((x1, y1), (x2, y2), boundary)| {
+        let gates = self.gates.iter().map(|&((x, y), (dx, dy), boundary)| {
+            let k = gate_half.map_or(1.0, |h| h / dx.hypot(dy));
+            let (x1, y1, x2, y2) = (x - dx * k, y - dy * k, x + dx * k, y + dy * k);
             let class = if boundary { "gate boundary" } else { "gate" };
             format!(r#"<line class="{class}" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}"/>"#)
         });
@@ -319,6 +367,20 @@ mod tests {
                     "{}: {sector:.40}",
                     track.name
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn gates_are_drawn_centred_across_the_track() {
+        for track in &tracks() {
+            let l = Layout::new(track);
+            for (&(c, half, _), gate) in l.gates.iter().zip(track.gates_ordered()) {
+                assert!(dist(c, (gate.center.x(), -gate.center.y())) < 1e-6, "{}", track.name);
+                // Parallel to the real gate.
+                let seg = gate.segment();
+                let (dx, dy) = (seg.end.x - seg.start.x, seg.start.y - seg.end.y);
+                assert!((half.0 * dy - half.1 * dx).abs() < 1e-6, "{}", track.name);
             }
         }
     }

@@ -163,6 +163,9 @@ language = Idioma
 language-system = Sistema
 language-en = English
 language-pt = Português
+live-map = Mapa ao vivo
+live-map-follow = Seguir-me
+live-map-overview = Pista inteira
 
 ## Backup
 backup = Cópia de segurança

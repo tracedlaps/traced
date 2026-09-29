@@ -27,7 +27,7 @@ pub fn card_svg(track: &Track, stats: &[(String, String, bool)]) -> String {
     let map = SECTORS
         .iter()
         .enumerate()
-        .fold(layout.markup(None), |m, (k, c)| {
+        .fold(layout.markup(None, Some(layout.gate_half())), |m, (k, c)| {
             m.replace(&format!("var(--sector-{k})"), c)
         });
     let name = esc(&track.name);

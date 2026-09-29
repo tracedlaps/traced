@@ -3,7 +3,7 @@ use dioxus_i18n::t;
 
 use super::backup::Backup;
 use crate::{
-    prefs::{Choice, Language, Theme},
+    prefs::{Choice, Language, MapView, Theme},
     recorder::RecorderCtx,
     units::Units,
 };
@@ -17,6 +17,7 @@ pub fn Settings() -> Element {
                 {choices::<Units>()}
                 {choices::<Language>()}
                 {choices::<Theme>()}
+                {choices::<MapView>()}
                 Backup {}
                 // Debug builds only: none of this is for drivers.
                 if cfg!(all(debug_assertions, target_os = "android")) {

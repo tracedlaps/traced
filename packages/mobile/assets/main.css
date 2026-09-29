@@ -114,6 +114,13 @@ small.interrupted { color: var(--accent); }
 .form .field { display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
 .form .field input { padding: 12px; border: 2px solid var(--line); border-radius: 12px; background: none; color: var(--fg); font: inherit; }
 .form .check { display: flex; gap: 8px; align-items: center; }
+/* Follow: a close-up that fades out towards the edges. */
+.track-map.follow { -webkit-mask-image: radial-gradient(closest-side, #000 65%, transparent); mask-image: radial-gradient(closest-side, #000 65%, transparent); }
+.track-map.follow g { transition: transform 1s linear; }
+.track-map.follow .outline { stroke-width: 18px; }
+.track-map.follow .sector { stroke-width: 10px; }
+.track-map.follow .gate { stroke-width: 3px; }
+.track-map.follow .gate.boundary { stroke-width: 5px; }
 .track-map .you { fill: var(--accent); stroke: var(--bg); stroke-width: 2px; vector-effect: non-scaling-stroke; transition: transform 1s linear; }
 .map-editor { padding: 0; gap: 0; max-width: none; }
 .map { position: relative; flex: 1; min-height: 0; display: flex; }
