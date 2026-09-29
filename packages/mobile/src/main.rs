@@ -17,6 +17,7 @@ mod share;
 mod storage;
 mod tracks;
 mod units;
+mod update;
 mod views;
 
 #[derive(Debug, Clone, Routable, PartialEq)]
@@ -65,6 +66,9 @@ fn App() -> Element {
     let tracks = use_signal(storage::load_tracks);
     use_context_provider(|| tracks);
     prefs::use_prefs();
+    let language = consume_context::<Signal<prefs::Language>>();
+    let latest: update::Latest = use_resource(move || update::check(language().id().language.to_string()));
+    use_context_provider(|| latest);
     // A track file opened from another app (e.g. WhatsApp), for the editor to import.
     let incoming = use_signal(storage::take_incoming);
     use_context_provider(|| incoming);

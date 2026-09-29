@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- What the FileProvider may hand out: StoragePlugin.shareFiles' scratch dir only. -->
+<!-- What the FileProvider may hand out: StoragePlugin.shareFiles' scratch dir, and installUpdate's APK. -->
 <paths>
     <cache-path name="share" path="share/" />
+    <cache-path name="update" path="update/" />
 </paths>

@@ -1,0 +1,23 @@
+# Changelog
+
+## 0.4.0 - 2026-09-29
+
+- Share a track. In Tracks, pick a track and tap Share to send a picture of it (outline, sectors, length and your best lap) to WhatsApp or any other app, with the track file attached. You can also save the picture or the track file to your phone.
+- Open a track someone sent you. Tap a .gpx file in WhatsApp or your file manager and choose Traced: the editor opens with the track, its start/finish and sectors already placed. Save it and it's ready to time.
+- The live map now follows you. It stays zoomed in around your position and moves with you, instead of shrinking the whole track into a corner. Tap the map to switch to the whole track; your choice is remembered, and you can also change it in Settings under Live map.
+- Arrows on the track maps show which way the track is driven.
+- Reverse a track in the editor with the new Reverse button. On a track with a separate start and finish, they swap too, so it's timed the other way.
+- Place the start and finish on any waypoint. Putting the start on (or past) the finish no longer gives an error: the track is simply turned around, so you can, for example, put the finish on the first waypoint and the start on the last.
+- Start/finish and sector lines look the same on every track in the track list and history, whether it's a short karting circuit or a long descent.
+
+## 0.3.0 - 2026-09-29
+
+- Recordings with the phone locked no longer stop after a few minutes. When you start a recording, Traced asks to be allowed to run in the background; tap Allow so your phone's battery saver doesn't close it mid-session.
+
+## 0.2.0 - 2026-09-28
+
+- Record with the phone locked. Timing keeps running with the screen off or the phone in your pocket. A notification shows while recording; on Android 13+ Traced asks for notification permission alongside location.
+
+## 0.1.0 - 2026-09-28
+
+- First public beta, for Android 8.0 and later.

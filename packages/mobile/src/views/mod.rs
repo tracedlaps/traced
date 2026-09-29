@@ -10,6 +10,7 @@ mod settings;
 mod share;
 mod shell;
 pub(crate) mod track_map;
+mod update;
 
 pub use capture::RecordTrack;
 pub use editor::{EditTrack, Import, NewTrack};

@@ -23,7 +23,7 @@ use traced_core::{
 use crate::tracks::{PRESETS, PRESETS_VERSION};
 
 #[cfg(target_os = "android")]
-mod plugin {
+pub(crate) mod plugin {
     #[manganis::ffi("android/storage")]
     extern "Kotlin" {
         pub type StoragePlugin;
@@ -36,12 +36,19 @@ mod plugin {
         pub fn pick_file(this: &StoragePlugin) -> String;
         /// Blocks until the user saves or cancels: call from `spawn_blocking`.
         pub fn save_file(this: &StoragePlugin, path: &str, name: &str) -> String;
+        /// Blocks on the network: call from `spawn_blocking`.
+        pub fn fetch(this: &StoragePlugin, url: &str) -> String;
+        /// Blocks on the download: call from `spawn_blocking`.
+        pub fn install_update(this: &StoragePlugin, url: &str) -> String;
     }
 
     pub fn construct() -> Option<StoragePlugin> {
         crate::android::load_plugin("dev.traced.storage.StoragePlugin")
             .map(StoragePlugin::from_global_ref)
     }
+
+    /// A call's error when the network is unreachable.
+    pub const OFFLINE: &str = "offline";
 
     /// Makes a plugin call and unwraps its reply envelope.
     pub fn call_now<T: serde::de::DeserializeOwned>(
@@ -53,12 +60,14 @@ mod plugin {
             #[serde(default)]
             data: serde_json::Value,
             #[serde(default)]
+            error: String,
+            #[serde(default)]
             detail: String,
         }
         let plugin = construct().ok_or("the storage plugin failed to load")?;
         let reply: Reply = serde_json::from_str(&f(&plugin)?).map_err(|e| e.to_string())?;
         if !reply.ok {
-            return Err(reply.detail);
+            return Err(if reply.error == OFFLINE { reply.error } else { reply.detail });
         }
         T::deserialize(reply.data).map_err(|e| e.to_string())
     }

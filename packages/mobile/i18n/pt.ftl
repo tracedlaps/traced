@@ -178,6 +178,19 @@ backup-saved = Cópia guardada.
 backup-restored = Cópia restaurada.
 backup-failed = A cópia falhou: { $error }
 
+## Updates
+updates = Atualizações
+update-version = Traced { $version }
+update-checking = A procurar uma versão mais recente…
+update-none = Esta é a versão mais recente.
+update-check-failed = Não foi possível procurar atualizações: { $error }
+update-install = Instalar a versão { $version }
+update-whats-new = Novidades na versão { $version }
+update-downloading = A transferir…
+no-internet = Sem ligação à internet
+update-failed = A atualização falhou: { $error }
+update-available = A versão { $version } está disponível · atualizar
+
 back-to-replay = A reproduzir · voltar à reprodução
 replay = Reproduzir
 end-replay = Terminar reprodução

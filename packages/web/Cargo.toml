@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 dioxus = { workspace = true }
+changelog = { workspace = true }
 gloo-timers = { version = "0.3", features = ["futures"] }
 
 [features]

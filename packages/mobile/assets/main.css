@@ -18,7 +18,8 @@ main { display: flex; flex-direction: column; gap: 16px; padding: 24px 16px; wid
 
 .shell { display: flex; flex-direction: column; height: 100%; }
 .shell > main { flex: 1; }
-.live-bar { display: block; padding: 10px; background: var(--stop); color: white; text-align: center; font-weight: 600; text-decoration: none; }
+.live-bar, .update-bar { display: block; padding: 10px; background: var(--stop); color: white; text-align: center; font-weight: 600; text-decoration: none; }
+.update-bar { background: var(--accent); }
 .tabs { display: flex; border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
 .tab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0; color: var(--muted); font-size: 0.75rem; text-decoration: none; }
 .tab svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: all 0.2s; }
@@ -93,6 +94,9 @@ small.interrupted { color: var(--accent); }
 .note { color: var(--muted); text-align: center; margin: 0; }
 .backup { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 16px; }
 .backup h2 { margin: 0; font-size: 1.1rem; }
+.backup h3 { margin: 8px 0 0; font-size: 1rem; }
+.notes { margin: 0; padding-left: 1.2em; }
+.notes li { margin-bottom: 6px; }
 
 .track-map { width: 100%; max-height: 45vh; }
 /* Live gives the map whatever height is left. */

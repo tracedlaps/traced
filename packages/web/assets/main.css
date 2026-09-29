@@ -101,6 +101,12 @@ h2 { margin: 0 0 8px; font: 800 clamp(2rem, 4.5vw, 3rem)/1 var(--display); font-
 .local p { margin: 0; max-width: 36em; }
 .local p + p { margin-top: 8px; color: var(--muted); }
 
+.release { display: grid; grid-template-columns: 11rem 1fr; gap: 8px 32px; padding-block: 24px; border-top: 1px solid var(--line); }
+.release h3 { margin: 0; font: 800 1.6rem/1.1 var(--display); font-stretch: 75%; }
+.release h3 small { display: block; margin-top: 6px; font: 500 0.8rem/1 var(--mono); color: var(--muted); }
+.release ul { margin: 0; padding-left: 1.2em; max-width: 44em; color: var(--muted); }
+.release li + li { margin-top: 8px; }
+
 footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding-block: 28px 40px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.9rem; }
 
 @media (max-width: 860px) {
@@ -114,5 +120,6 @@ footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12
   .specs { grid-template-columns: 1fr; gap: 28px; }
   .local { grid-template-columns: 1fr; padding: 24px; gap: 12px; }
   .phone { width: 290px; }
+  .release { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .apk { transition: none; } }

@@ -12,12 +12,18 @@ import androidx.core.content.FileProvider
 import androidx.core.content.IntentCompat
 import org.json.JSONObject
 import java.io.File
+import java.io.InputStream
+import java.net.HttpURLConnection
+import java.net.SocketException
+import java.net.SocketTimeoutException
+import java.net.URL
+import java.net.UnknownHostException
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
 /**
- * App storage bridge for Rust (`#[manganis::ffi]`). Calls returning JSON reply with the
- * envelope `{"ok":true,"data":…}` or `{"ok":false,"error":"unavailable","detail":…}`.
+ * App storage bridge for Rust (`#[manganis::ffi]`), app updates included. Calls returning JSON reply with the
+ * envelope `{"ok":true,"data":…}` or `{"ok":false,"error":"unavailable"|"offline","detail":…}`.
  */
 class StoragePlugin(
     private val activity: Activity,
@@ -79,6 +85,23 @@ class StoragePlugin(
             ok(null)
         }
 
+    /** The body of `url`, as text. Never call on the UI thread. */
+    fun fetch(url: String): String = guard { ok(get(url).bufferedReader().use { it.readText() }) }
+
+    /**
+     * Downloads the APK at `url` and opens the system installer on it, which first asks to allow
+     * installs from Traced. Doesn't wait for the install. Never call on the UI thread.
+     */
+    fun installUpdate(url: String): String =
+        guard {
+            val apk = File(activity.cacheDir, "update/traced.apk").apply { parentFile!!.mkdirs() }
+            get(url).use { input -> apk.outputStream().use { input.copyTo(it) } }
+            val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", apk)
+            val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, APK).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            activity.runOnUiThread { activity.startActivity(intent) }
+            ok(null)
+        }
+
     /** Starts a picker with `launch` and waits for its answer. */
     private fun await(launch: () -> Unit): Uri? {
         val answer = CompletableFuture<Uri?>().also { pending = it }
@@ -94,13 +117,15 @@ class StoragePlugin(
         try {
             block()
         } catch (e: Exception) {
-            JSONObject().put("ok", false).put("error", "unavailable").put("detail", e.message ?: e.javaClass.simpleName).toString()
+            val error = if (e is UnknownHostException || e is SocketException || e is SocketTimeoutException) "offline" else "unavailable"
+            JSONObject().put("ok", false).put("error", error).put("detail", e.message ?: e.javaClass.simpleName).toString()
         }
 
     private fun ok(data: Any?): String = JSONObject().put("ok", true).put("data", data ?: JSONObject.NULL).toString()
 
     companion object {
         private const val PICK_WAIT_MINUTES = 10L
+        private const val APK = "application/vnd.android.package-archive"
 
         // Wired by MainActivity, like GpsPlugin's permission launcher: `registerForActivityResult`
         // must run before the activity starts.
@@ -150,6 +175,14 @@ class StoragePlugin(
             }
     }
 }
+
+/** A GET's body, following redirects (GitHub's to its download host); throws on an error status. */
+private fun get(url: String): InputStream =
+    (URL(url).openConnection() as HttpURLConnection).run {
+        connectTimeout = 15_000
+        readTimeout = 30_000
+        inputStream
+    }
 
 /** Copies `uri` to `dest`, since Rust can't open a `content://` URI: `{name, path}`. */
 private fun Context.copy(

@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 
-use crate::{recorder::RecorderCtx, storage::PickedFile, Route};
+use crate::{recorder::RecorderCtx, storage::PickedFile, update::Latest, Route};
 
 // 24×24 stroke icons.
 const HISTORY: &str = "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 3";
@@ -16,6 +16,10 @@ pub fn Shell() -> Element {
     let ctx = use_context::<RecorderCtx>();
     let route = use_route::<Route>();
     let incoming = use_context::<Signal<Option<PickedFile>>>();
+    // A newer release, offered until followed to Settings, where it's installed.
+    let latest = use_context::<Latest>();
+    let mut seen = use_signal(|| false);
+    let update = latest().and_then(Result::ok).and_then(|r| r.into_iter().next()).filter(|_| !seen() && route != Route::Settings {});
     use_effect(move || {
         if incoming.read().is_some() {
             navigator().push(Route::Import {});
@@ -26,6 +30,8 @@ pub fn Shell() -> Element {
         div { class: "shell",
             if ctx.recording.read().is_some() {
                 Link { class: "live-bar", to: Route::Live {}, {if ctx.replaying.read().is_some() { t!("back-to-replay") } else { t!("back-to-live") }} }
+            } else if let Some(release) = update {
+                Link { class: "update-bar", to: Route::Settings {}, onclick: move |_| seen.set(true), {t!("update-available", version: release.version)} }
             }
             Outlet::<Route> {}
             nav { class: "tabs",

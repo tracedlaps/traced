@@ -10,6 +10,8 @@ git -C "$pub" ls-remote -q --exit-code origin main >/dev/null && git -C "$pub" p
 cd "$root" && dx bundle --package web --platform web --release
 find "$pub" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
 cp -r target/dx/web/release/web/public/. "$pub"
+# Raw, for the app to show what's new before an update.
+mkdir -p "$pub/changelog" && cp packages/changelog/*.md "$pub/changelog/"
 echo tracedlaps.com > "$pub/CNAME" && touch "$pub/.nojekyll"
 
 git -C "$pub" add -A

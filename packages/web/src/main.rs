@@ -42,6 +42,7 @@ fn App() -> Element {
                 nav {
                     a { href: "#features", "Features" }
                     a { href: "#install", "Install" }
+                    a { href: "#changelog", "Changelog" }
                 }
             }
 
@@ -97,6 +98,21 @@ fn App() -> Element {
                     ol { class: "steps",
                         for (title, text) in STEPS {
                             li { div { b { "{title}" } span { "{text}" } } }
+                        }
+                    }
+                }
+            }
+
+            section { id: "changelog",
+                p { class: "label", "Changelog" }
+                h2 { "What's new" }
+                for entry in changelog::parse(changelog::EN) {
+                    div { class: "release",
+                        h3 { "v{entry.version}" small { "{entry.date}" } }
+                        ul {
+                            for change in entry.changes {
+                                li { "{change}" }
+                            }
                         }
                     }
                 }

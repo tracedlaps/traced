@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 dioxus = { workspace = true, features = ["router"] }
 traced_core = { workspace = true }
+changelog = { workspace = true }
 tokio = { version = "1", features = ["time", "sync", "rt"] }
 futures = "0.3"
 chrono = { version = "0.4", features = ["unstable-locales"] }

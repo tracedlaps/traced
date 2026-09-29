@@ -178,6 +178,19 @@ backup-saved = Backup saved.
 backup-restored = Backup restored.
 backup-failed = Backup failed: { $error }
 
+## Updates
+updates = Updates
+update-version = Traced { $version }
+update-checking = Checking for a newer version…
+update-none = This is the latest version.
+update-check-failed = Couldn't check for updates: { $error }
+update-install = Install version { $version }
+update-whats-new = What's new in { $version }
+update-downloading = Downloading…
+no-internet = No internet connection
+update-failed = Update failed: { $error }
+update-available = Version { $version } is available · update
+
 back-to-replay = Replaying · back to replay
 replay = Replay
 end-replay = End replay
