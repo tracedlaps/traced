@@ -8,7 +8,7 @@ mod record;
 mod results;
 mod settings;
 mod shell;
-mod track_map;
+pub(crate) mod track_map;
 
 pub use capture::RecordTrack;
 pub use editor::{EditTrack, Import, NewTrack};
@@ -59,7 +59,7 @@ fn import_error(e: &ImportError) -> String {
 }
 
 /// `m:ss.t`, the one format for every lap, split and clock.
-fn lap_time(secs: f64) -> String {
+pub(crate) fn lap_time(secs: f64) -> String {
     let tenths = (secs.max(0.0) * 10.0).floor() as u64;
     format!("{}:{:02}.{}", tenths / 600, tenths / 10 % 60, tenths % 10)
 }
@@ -74,7 +74,7 @@ fn Delta(delta: TimeDelta) -> Element {
 }
 
 /// Start to finish (m), or a lap: what's timed, without lead-in or lead-out waypoints.
-fn timed_m(track: &Track) -> f64 {
+pub(crate) fn timed_m(track: &Track) -> f64 {
     track.sectors().map(|s| s.length).sum()
 }
 
