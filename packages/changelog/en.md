@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0 - 2026-09-29
+
+- Update from inside the app. When a new version is out, a bar at the top of the screen takes you to Settings, where Updates shows what's new and installs it with one tap. The first time, Android asks you to allow installs from Traced: allow it, then tap Install again (Traced restarts when you do).
+- See what's new in every version at tracedlaps.com.
+
 ## 0.4.0 - 2026-09-29
 
 - Share a track. In Tracks, pick a track and tap Share to send a picture of it (outline, sectors, length and your best lap) to WhatsApp or any other app, with the track file attached. You can also save the picture or the track file to your phone.

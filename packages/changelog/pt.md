@@ -1,5 +1,10 @@
 # Novidades
 
+## 0.5.0 - 2026-09-29
+
+- Atualize a partir da app. Quando sai uma nova versão, uma barra no topo do ecrã leva-o às Definições, onde Atualizações mostra as novidades e instala a nova versão com um toque. Da primeira vez, o Android pede para permitir instalações a partir do Traced: permita e toque em Instalar outra vez (o Traced reinicia quando o faz).
+- Veja as novidades de cada versão em tracedlaps.com.
+
 ## 0.4.0 - 2026-09-29
 
 - Partilhe uma pista. Em Pistas, escolha uma pista e toque em Partilhar para enviar uma imagem dela (traçado, setores, comprimento e a sua melhor volta) para o WhatsApp ou qualquer outra app, com o ficheiro da pista em anexo. Também pode guardar a imagem ou o ficheiro da pista no telemóvel.
