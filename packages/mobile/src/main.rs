@@ -13,6 +13,7 @@ mod i18n;
 mod imu;
 mod prefs;
 mod recorder;
+mod share;
 mod storage;
 mod tracks;
 mod units;
