@@ -1,5 +1,9 @@
 # Novidades
 
+## 0.6.0 - 2026-10-01
+
+- Apague uma gravação de que já não precisa: abra-a no Histórico e toque em Apagar gravação, no fundo.
+
 ## 0.5.1 - 2026-10-01
 
 - As gravações com o ecrã desligado já não param em telemóveis OnePlus, OPPO e realme. O gestor de bateria destes telemóveis fecha o Traced mesmo depois de lhe permitir funcionar em segundo plano, por isso Iniciar mostra agora um pequeno guia para a definição que o mantém a funcionar (Utilização da bateria → Permitir atividade em segundo plano), até estar ativa.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0 - 2026-10-01
+
+- Delete a recording you no longer want: open it in History and tap Delete recording at the bottom.
+
 ## 0.5.1 - 2026-10-01
 
 - Recordings with the screen off no longer stop on OnePlus, OPPO and realme phones. Their battery manager closes Traced even after you allow it in the background, so on these phones Start now shows a short guide to the setting that keeps it running (Battery usage → Allow background activity) until it's on.
