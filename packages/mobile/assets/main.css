@@ -57,11 +57,13 @@ small.interrupted { color: var(--accent); }
 .speed span { font: 700 6rem/1 system-ui; font-variant-numeric: tabular-nums; }
 .speed.idle { justify-content: center; color: var(--muted); }
 /* A fixed column for the dial, so the speed gaining or losing a digit doesn't push it sideways. */
-.speed-row { display: grid; grid-template-columns: 1fr 6rem; align-items: center; gap: 8px; }
-.g-dial { width: 6rem; text-align: center; }
+.speed-row { display: grid; grid-template-columns: 1fr 7rem; align-items: center; gap: 8px; }
+.g-dial { width: 7rem; text-align: center; }
 .g-dial svg { display: block; width: 100%; }
-.g-dial .ring { fill: none; stroke: var(--line); stroke-width: 0.04; }
-.g-dial .peak { fill: var(--muted); }
+.g-dial .rim, .g-dial .bowl { fill: var(--fg); fill-opacity: 0.06; stroke: var(--muted); stroke-opacity: 0.6; stroke-width: 0.02; }
+.g-dial .peak { fill: none; stroke: var(--fg); stroke-opacity: 0.8; stroke-width: 0.03; stroke-linecap: round; }
+.g-dial .spoke { stroke: var(--muted); stroke-opacity: 0.6; stroke-width: 0.02; }
+.g-dial text { fill: var(--fg); font: 600 0.17px system-ui; text-anchor: middle; dominant-baseline: central; font-variant-numeric: tabular-nums; }
 /* Glides between snapshots (20 Hz at most), so the ball doesn't step. */
 .g-dial .ball { fill: var(--accent); transition: transform 0.1s linear; }
 .g-dial.calibrating .ball { fill: var(--muted); }

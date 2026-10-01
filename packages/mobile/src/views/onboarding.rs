@@ -3,7 +3,12 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 
-use super::track_map::{Layout, TrackSvg};
+use traced_core::imu::{GForceSnapshot, GPeaks};
+
+use super::{
+    live::GMeterDial,
+    track_map::{Layout, TrackSvg},
+};
 use crate::{gps::wire::Permission, recorder::RecorderCtx, storage, tracks::PRESETS, units::Units};
 
 /// Whether the welcome is done; Settings can bring it back.
@@ -141,19 +146,7 @@ fn Art(page: usize) -> Element {
         0 => rsx! {
             div { class: "speed-row",
                 div { class: "speed", span { "87" } small { {Units::current().speed_unit()} } }
-                div { class: "g-dial",
-                    svg { view_box: "-1.6 -1.6 3.2 3.2",
-                        for r in [0.5, 1.0, 1.5] {
-                            circle { class: "ring", r }
-                        }
-                        line { class: "ring", x1: -1.5, x2: 1.5 }
-                        line { class: "ring", y1: -1.5, y2: 1.5 }
-                        circle { class: "peak", cx: 0, cy: -1.1, r: 0.06 }
-                        circle { class: "peak", cx: 1.2, cy: 0, r: 0.06 }
-                        circle { class: "ball", cx: 0.8, cy: -0.5, r: 0.16 }
-                    }
-                    small { "1.12 g" }
-                }
+                GMeterDial { g: GForceSnapshot { lateral_g: 0.5, longitudinal_g: -0.3, aligned: true, peaks: GPeaks { braking: 0.8, accelerating: 0.4, left: 0.6, right: 0.7 } } }
             }
         },
         1 => rsx! {

@@ -241,27 +241,36 @@ fn Delta(secs: f64) -> Element {
     rsx! { span { class: if secs < 0.0 { "delta ahead" } else { "delta behind" }, "{secs:+.2}" } }
 }
 
-/// The app's g-dial: the felt force as a ball in a bowl (braking rolls it up, a left turn right).
+/// The app's g-dial: the felt force as a ball in a bowl (braking rolls it up, a right turn left),
+/// each side's g now as a number and its peak as an arc.
 #[component]
 fn GDial(g: (f64, f64), peaks: [f64; 4]) -> Element {
-    const MAX: f64 = 1.5;
-    let at = |x: f64, y: f64| {
-        let k = x.hypot(y).max(MAX) / MAX;
-        (x / k, y / k)
-    };
-    let (x, y) = at(-g.1, g.0);
+    const MAX: f64 = 1.0;
+    const BOWL: f64 = 0.62;
+    const RIM: f64 = 0.97;
+    let at = |deg: f64, r: f64| (deg.to_radians().cos() * r, deg.to_radians().sin() * r);
+    let k = BOWL / g.0.hypot(g.1).max(MAX);
+    let (x, y) = (-g.1 * k, g.0 * k);
     let [brake, accel, left, right] = peaks;
-    let marks = [(0.0, -brake), (0.0, accel), (left, 0.0), (-right, 0.0)].into_iter().filter(|p| p.0.hypot(p.1) > 0.05).map(|(x, y)| at(x, y));
+    let sides = [(-90.0, -g.0, brake), (90.0, g.0, accel), (180.0, g.1, right), (0.0, -g.1, left)].map(|(deg, now, v)| {
+        let r = v.min(MAX) * BOWL / MAX;
+        let ((x0, y0), (x1, y1)) = (at(deg - 40.0, r), at(deg + 40.0, r));
+        (at(deg, (BOWL + RIM) / 2.0), now.max(0.0), format!("M{x0} {y0}A{r} {r} 0 0 1 {x1} {y1}"), v)
+    });
+    let d = std::f64::consts::FRAC_1_SQRT_2;
     rsx! {
         div { class: "g-dial",
-            svg { view_box: "-1.6 -1.6 3.2 3.2",
-                for r in [0.5, 1.0, 1.5] { circle { class: "ring", r } }
-                line { class: "ring", x1: -MAX, x2: MAX }
-                line { class: "ring", y1: -MAX, y2: MAX }
-                for (cx, cy) in marks { circle { class: "peak", cx, cy, r: 0.06 } }
-                circle { class: "ball", r: 0.16, style: "transform: translate({x}px, {y}px)" }
+            svg { view_box: "-1 -1 2 2",
+                for (r, class) in [(RIM, "rim"), (BOWL, "bowl"), (BOWL / 2.0, "bowl")] { circle { class, r } }
+                for (sx, sy) in [(1.0, 1.0), (1.0, -1.0), (-1.0, 1.0), (-1.0, -1.0)] {
+                    line { class: "spoke", x1: sx * d * BOWL, y1: sy * d * BOWL, x2: sx * d * RIM, y2: sy * d * RIM }
+                }
+                for ((x, y), now, arc, v) in sides {
+                    text { x, y, "{now:.1}" }
+                    if v > 0.05 { path { class: "peak", d: arc } }
+                }
+                circle { class: "ball", r: 0.08, style: "transform: translate({x}px, {y}px)" }
             }
-            small { "{g.0.hypot(g.1):.2} g" }
         }
     }
 }

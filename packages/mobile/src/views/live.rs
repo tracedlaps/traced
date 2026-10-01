@@ -4,7 +4,7 @@ use traced_core::clock::Clock;
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use traced_core::track::LiveStatus;
+use traced_core::{imu::GForceSnapshot, track::LiveStatus};
 
 use super::{
     gps_status, lap_time,
@@ -112,44 +112,55 @@ pub fn Live() -> Element {
     }
 }
 
-/// The felt g-force: a ball in a bowl, rolling opposite the acceleration (braking rolls it up,
-/// a left turn right), on rings every 0.5 g. Reads the signal itself, so only the dial re-renders.
+/// The felt g-force, like a car's g-meter: a ball in a bowl rolling opposite the acceleration
+/// (braking rolls it up, a right turn left), with each side's g now and its peak.
+/// Reads the signal itself, so only the dial re-renders.
 #[component]
 fn GDial() -> Element {
-    const MAX: f32 = 1.5;
-    let Some(g) = *use_context::<RecorderCtx>().g.read() else {
-        return rsx! {};
-    };
-    // Screen coordinates, y down, held inside the outer ring.
-    let at = |x: f32, y: f32| {
-        let k = x.hypot(y).max(MAX) / MAX;
-        (x / k, y / k)
-    };
-    let (x, y) = at(-g.lateral_g, g.longitudinal_g);
-    let p = g.peaks;
-    let peaks = [(0.0, -p.braking), (0.0, p.accelerating), (p.left, 0.0), (-p.right, 0.0)]
-        .into_iter()
-        .filter(|&(x, y)| x.hypot(y) > 0.05)
-        .map(|(x, y)| at(x, y));
+    let g = *use_context::<RecorderCtx>().g.read();
+    rsx! { if let Some(g) = g { GMeterDial { g } } }
+}
+
+#[component]
+pub fn GMeterDial(g: GForceSnapshot) -> Element {
+    /// g at the bowl's rim.
+    const MAX: f32 = 1.0;
+    /// Radii of the bowl (holding the ball) and the outer band (holding the peaks).
+    const BOWL: f32 = 0.62;
+    const RIM: f32 = 0.97;
+    // Screen coordinates, y down; the ball is held inside the bowl.
+    let at = |deg: f32, r: f32| (deg.to_radians().cos() * r, deg.to_radians().sin() * r);
+    let k = BOWL / g.lateral_g.hypot(g.longitudinal_g).max(MAX);
+    let (x, y) = (-g.lateral_g * k, g.longitudinal_g * k);
+    // Each side the ball rolls to (degrees clockwise from the right): its g now as a number in the
+    // band, and its peak as an arc at that g across its quarter of the bowl.
+    let (p, lon, lat) = (g.peaks, g.longitudinal_g, g.lateral_g);
+    let sides = [(-90.0, -lon, p.braking), (90.0, lon, p.accelerating), (180.0, lat, p.right), (0.0, -lat, p.left)];
+    let sides = sides.map(|(deg, now, v)| {
+        let r = v.min(MAX) * BOWL / MAX;
+        let ((x0, y0), (x1, y1)) = (at(deg - 40.0, r), at(deg + 40.0, r));
+        (at(deg, (BOWL + RIM) / 2.0), now.max(0.0), format!("M{x0} {y0}A{r} {r} 0 0 1 {x1} {y1}"), v)
+    });
+    let d = std::f32::consts::FRAC_1_SQRT_2;
     rsx! {
         div { class: if g.aligned { "g-dial" } else { "g-dial calibrating" },
-            svg { view_box: "-1.6 -1.6 3.2 3.2",
-                for r in [0.5, 1.0, 1.5] {
-                    circle { class: "ring", r }
+            svg { view_box: "-1 -1 2 2",
+                for (r, class) in [(RIM, "rim"), (BOWL, "bowl"), (BOWL / 2.0, "bowl")] {
+                    circle { class, r }
                 }
-                line { class: "ring", x1: -MAX, x2: MAX }
-                line { class: "ring", y1: -MAX, y2: MAX }
-                for (cx, cy) in peaks {
-                    circle { class: "peak", cx, cy, r: 0.06 }
+                for (sx, sy) in [(1.0, 1.0), (1.0, -1.0), (-1.0, 1.0), (-1.0, -1.0)] {
+                    line { class: "spoke", x1: sx * d * BOWL, y1: sy * d * BOWL, x2: sx * d * RIM, y2: sy * d * RIM }
                 }
-                circle { class: "ball", r: 0.16, style: "transform: translate({x}px, {y}px)" }
+                for ((x, y), now, arc, v) in sides {
+                    text { x, y, "{now:.1}" }
+                    if v > 0.05 {
+                        path { class: "peak", d: arc }
+                    }
+                }
+                circle { class: "ball", r: 0.08, style: "transform: translate({x}px, {y}px)" }
             }
-            small {
-                if g.aligned {
-                    "{g.lateral_g.hypot(g.longitudinal_g):.2} g"
-                } else {
-                    {t!("g-calibrating")}
-                }
+            if !g.aligned {
+                small { {t!("g-calibrating")} }
             }
         }
     }
