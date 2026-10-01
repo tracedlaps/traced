@@ -5,11 +5,11 @@ use super::guide::BackgroundGuide;
 use crate::{recorder::RecorderCtx, storage::PickedFile, update::Latest, Route};
 
 // 24×24 stroke icons.
-const HISTORY: &str = "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 3";
-const TRACKS: &str = "M5 21V4M5 4h11l-2 4 2 4H5";
-const SPEEDO: &str = "M4.5 17a9 9 0 1 1 15 0M12 13l4-5";
-const EDITOR: &str = "M4 20h4L19 9l-4-4L4 16zM13 7l4 4";
-const SETTINGS: &str = "M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4";
+pub(crate) const HISTORY: &str = "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 3";
+pub(crate) const TRACKS: &str = "M5 21V4M5 4h11l-2 4 2 4H5";
+pub(crate) const SPEEDO: &str = "M4.5 17a9 9 0 1 1 15 0M12 13l4-5";
+pub(crate) const EDITOR: &str = "M4 20h4L19 9l-4-4L4 16zM13 7l4 4";
+pub(crate) const SETTINGS: &str = "M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4";
 
 /// Every screen but Live: the screen above, the tab bar below, and a way back to a recording in progress.
 #[component]

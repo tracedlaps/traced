@@ -190,6 +190,24 @@ impl RecorderCtx {
         self.guide.set(None);
     }
 
+    /// Whether the recording's notification still needs the user's permission (Android 13+).
+    pub fn needs_notifications(self) -> bool {
+        #[cfg(target_os = "android")]
+        return self.background.is_some_and(|b| b.check().is_ok_and(|c| !c.notifications));
+        #[cfg(not(target_os = "android"))]
+        false
+    }
+
+    /// Shows the system's notification permission dialog, if it's still needed.
+    pub async fn request_notifications(self) {
+        #[cfg(target_os = "android")]
+        if let Some(b) = self.background {
+            if let Ok(Err(e)) = tokio::task::spawn_blocking(move || b.request_notifications()).await {
+                warn!("notification permission: {e}");
+            }
+        }
+    }
+
     fn exempt(self) -> bool {
         #[cfg(target_os = "android")]
         return self.background.is_none_or(|b| b.check().is_ok_and(|c| c.exempt));
@@ -319,6 +337,17 @@ impl RecorderCtx {
             return Err(GpsError::LocationDisabled);
         }
         Ok(Some(gps.stream(*self.force_location_manager.peek())))
+    }
+
+    /// Shows the system's location permission dialog, if the device GPS still needs it.
+    pub async fn request_location(self) {
+        #[cfg(target_os = "android")]
+        if let Some(gps) = self.device {
+            match gps.request_permission().await {
+                Ok(permission) => { let mut signal = self.permission; signal.set(Some(permission)) }
+                Err(e) => warn!("location permission: {e}"),
+            }
+        }
     }
 
     #[cfg(not(target_os = "android"))]

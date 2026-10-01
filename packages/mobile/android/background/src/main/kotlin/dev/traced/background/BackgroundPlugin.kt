@@ -15,6 +15,8 @@ import android.provider.Settings
 import android.view.WindowManager
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Keeps a recording alive with the screen off, for Rust (`#[manganis::ffi]`), replying in the GPS plugin's JSON envelope:
@@ -50,16 +52,36 @@ class BackgroundPlugin(
         }
 
     /**
-     * `{strict, exempt, killed}`: whether this is a phone whose own battery manager ignores the system exemption
+     * `{strict, exempt, killed, notifications}`: whether this is a phone whose own battery manager ignores the system exemption
      * (OnePlus, OPPO, realme: only its per-app "Allow background activity" keeps Traced alive, and that also
-     * grants the exemption), whether Traced is exempt, and whether the last run was killed mid-recording.
+     * grants the exemption), whether Traced is exempt, and whether the last run was killed mid-recording, and whether the recording's notification can show.
      */
-    fun check(): String = ok(JSONObject().put("strict", strict).put("exempt", isExempt()).put("killed", killedWhileRecording))
+    fun check(): String =
+        ok(
+            JSONObject()
+                .put("strict", strict)
+                .put("exempt", isExempt())
+                .put("killed", killedWhileRecording)
+                .put("notifications", notificationsAllowed()),
+        )
+
+    /** Fires the notification dialog (Android 13+) and waits (≤60 s) for the answer. Never call on the UI thread. */
+    fun requestNotifications(): String =
+        guard {
+            val fire = requestNotificationPermission
+            if (!notificationsAllowed() && fire != null) {
+                val latch = CountDownLatch(1)
+                onNotificationAnswer = latch::countDown
+                activity.runOnUiThread { fire() }
+                latch.await(PERMISSION_WAIT_SECONDS, TimeUnit.SECONDS)
+            }
+            ok(null)
+        }
 
     /** The recording's notification (Android 13+), then the exemption: one dialog at a time. */
     private fun askNotifications() {
         val fire = requestNotificationPermission
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || granted(Manifest.permission.POST_NOTIFICATIONS) || fire == null) {
+        if (notificationsAllowed() || fire == null) {
             return askExemption()
         }
         onNotificationAnswer = ::askExemption
@@ -77,6 +99,9 @@ class BackgroundPlugin(
         val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.fromParts("package", activity.packageName, null))
         activity.runOnUiThread { activity.startActivity(intent) }
     }
+
+    private fun notificationsAllowed() =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || granted(Manifest.permission.POST_NOTIFICATIONS)
 
     private fun isExempt() = activity.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(activity.packageName)
 
@@ -107,6 +132,7 @@ class BackgroundPlugin(
 
     companion object {
         private const val RECORDING = "recording"
+        private const val PERMISSION_WAIT_SECONDS = 60L
         private val STRICT_MANUFACTURERS = setOf("oneplus", "oppo", "realme")
         private val USER_OR_CRASH =
             setOf(

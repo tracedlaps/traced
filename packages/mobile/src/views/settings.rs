@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 
-use super::{backup::Backup, update::Updates};
+use super::{backup::Backup, onboarding, update::Updates};
 use crate::{
     prefs::{Choice, Language, MapView, Theme},
     recorder::RecorderCtx,
@@ -19,6 +19,10 @@ pub fn Settings() -> Element {
                 {choices::<Theme>()}
                 {choices::<MapView>()}
                 Backup {}
+                section { class: "backup",
+                    h2 { {t!("tutorial")} }
+                    button { class: "button secondary", onclick: |_| onboarding::replay(), {t!("tutorial-replay")} }
+                }
                 Updates {}
                 // Debug builds only: none of this is for drivers.
                 if cfg!(all(debug_assertions, target_os = "android")) {

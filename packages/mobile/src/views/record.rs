@@ -5,7 +5,9 @@ use dioxus_i18n::t;
 use traced_core::{timing::best_lap, track::Track};
 
 use super::{
-    gps_status, lap_time, refusal, timed_m,
+    gps_status, lap_time,
+    onboarding::Empty,
+    refusal, shell, timed_m,
     track_map::{Layout, TrackSvg},
 };
 use crate::{gps::wire::Permission, recorder::RecorderCtx, storage, units::Units, Route};
@@ -21,8 +23,9 @@ pub fn Tracks() -> Element {
         return rsx! {
             main {
                 h1 { {t!("tracks")} }
-                p { class: "note", {t!("no-tracks")} }
-                Link { class: "button", to: Route::Import {}, {t!("import-a-track")} }
+                Empty { icon: shell::TRACKS, title: t!("no-tracks"), body: t!("no-tracks-body"),
+                    Link { class: "button", to: Route::Import {}, {t!("add-track")} }
+                }
             }
         };
     }

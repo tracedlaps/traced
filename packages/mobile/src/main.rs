@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use recorder::RecorderCtx;
 use uuid::Uuid;
 use views::{
-    EditTrack, History, Import, Live, NewTrack, RecordTrack, Results, SavedResults, Settings, ShareTrack, Shell, Speedometer, Tracks,
+    EditTrack, History, Import, Live, NewTrack, Onboarded, Onboarding, RecordTrack, Results, SavedResults, Settings, ShareTrack, Shell, Speedometer, Tracks,
 };
 
 #[cfg(target_os = "android")]
@@ -83,8 +83,14 @@ fn App() -> Element {
         }
     });
 
+    let Onboarded(onboarded) = use_context_provider(Onboarded::load);
+
     rsx! {
         document::Stylesheet { href: MAIN_CSS }
-        Router::<Route> {}
+        if onboarded() {
+            Router::<Route> {}
+        } else {
+            Onboarding {}
+        }
     }
 }

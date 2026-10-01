@@ -170,3 +170,29 @@ small.interrupted { color: var(--accent); }
 .row { display: flex; gap: 8px; }
 .row > * { flex: 1; }
 .card-preview svg { display: block; width: 100%; height: auto; border-radius: 12px; }
+
+/* First run: welcome and empty screens. */
+.welcome { justify-content: space-between; padding-bottom: 32px; }
+.welcome .skip { align-self: flex-end; width: auto; }
+.slide { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 16px; }
+.slide p { margin: 0; color: var(--muted); }
+.art { height: 260px; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+.art .track-map { flex: 1; min-height: 0; max-height: none; }
+.art .lap { display: flex; justify-content: center; align-items: baseline; gap: 12px; font: 700 2rem system-ui; font-variant-numeric: tabular-nums; }
+.dots { display: flex; justify-content: center; gap: 8px; }
+.dots span { width: 8px; height: 8px; border-radius: 4px; background: var(--line); transition: width 0.2s; }
+.dots span.on { width: 24px; background: var(--accent); }
+.badge, .empty-icon { display: grid; place-items: center; border-radius: 50%; }
+.badge { width: 72px; height: 72px; background: var(--accent); color: white; }
+.badge svg, .reasons svg, .empty-icon svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.badge svg { width: 36px; height: 36px; }
+.reasons { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
+.reasons li { display: flex; gap: 12px; }
+.reasons svg { flex: none; width: 24px; height: 24px; color: var(--accent); }
+
+.empty { align-items: center; justify-content: center; gap: 12px; padding: 0 24px; text-align: center; }
+.empty-icon { width: 96px; height: 96px; border: 2px dashed var(--line); color: var(--muted); }
+.empty-icon svg { width: 40px; height: 40px; }
+.empty strong { font-size: 1.25rem; }
+.empty p { margin: 0; color: var(--muted); }
+.empty .button { width: auto; padding: 14px 24px; }

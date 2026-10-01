@@ -12,6 +12,8 @@ pub struct Check {
     pub exempt: bool,
     /// The last run was killed mid-recording.
     pub killed: bool,
+    /// The recording's notification can show (always before Android 13).
+    pub notifications: bool,
 }
 
 #[cfg(target_os = "android")]
@@ -29,6 +31,7 @@ mod android {
         pub type BackgroundPlugin;
         pub fn set_recording(this: &BackgroundPlugin, on: bool) -> String;
         pub fn check(this: &BackgroundPlugin) -> String;
+        pub fn request_notifications(this: &BackgroundPlugin) -> String;
     }
 
     /// App-lifetime handle to the plugin.
@@ -46,6 +49,11 @@ mod android {
 
         pub fn check(&self) -> Result<Check, GpsError> {
             invoke(check(&self.0))
+        }
+
+        /// Shows the notification dialog, if needed; blocks until it's answered.
+        pub fn request_notifications(&self) -> Result<(), GpsError> {
+            invoke(request_notifications(&self.0))
         }
     }
 }

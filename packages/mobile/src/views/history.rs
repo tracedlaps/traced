@@ -12,6 +12,8 @@ use uuid::Uuid;
 
 use super::{
     lap_time,
+    onboarding::Empty,
+    shell::HISTORY,
     map::{Map, View},
     results::Report,
     track_map::{Layout, TrackSvg},
@@ -28,7 +30,9 @@ pub fn History() -> Element {
         main {
             h1 { {t!("history")} }
             if recordings.is_empty() {
-                p { class: "note", {t!("no-recordings")} }
+                Empty { icon: HISTORY, title: t!("no-recordings"), body: t!("no-recordings-body"),
+                    Link { class: "button", to: Route::Tracks {}, {t!("choose-track")} }
+                }
             }
             ul { class: "tracks scroll",
                 for r in recordings.iter() {
