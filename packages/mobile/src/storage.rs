@@ -158,6 +158,11 @@ pub fn delete_track(id: Uuid) -> Option<()> {
     with_store("delete track", |s| s.delete_track(id))
 }
 
+/// Deletes recording `id`, with its fixes and samples. `None` if it couldn't.
+pub fn delete_recording(id: Uuid) -> Option<()> {
+    with_store("delete recording", |s| s.delete_recording(id))
+}
+
 pub fn setting(key: &str) -> Option<String> {
     with_store("load setting", |s| s.setting(key)).flatten()
 }

@@ -53,6 +53,8 @@ pub fn SavedResults(id: Uuid) -> Element {
     let tracks = use_context::<Signal<Vec<Arc<Track>>>>();
     let ctx = use_context::<RecorderCtx>();
     let mut trim = use_signal(|| true);
+    let mut confirm_delete = use_signal(|| false);
+    let mut error = use_signal(|| None::<String>);
     let Some(r) = storage::recordings().into_iter().find(|r| r.id == id) else {
         return rsx! {
             main {
@@ -94,6 +96,31 @@ pub fn SavedResults(id: Uuid) -> Element {
                     None => rsx! {},
                 }
                 Report { speed: r.speedometer, session: r.session, g: r.g }
+                section { class: "backup",
+                    if let Some(e) = error() {
+                        p { class: "error", "{e}" }
+                    }
+                    if confirm_delete() {
+                        p { class: "error", {t!("delete-recording-warning")} }
+                        button {
+                            class: "stop",
+                            onclick: move |_| match storage::delete_recording(id) {
+                                Some(()) => _ = navigator().replace(Route::History {}),
+                                None => error.set(Some(t!("delete-recording-failed"))),
+                            },
+                            {t!("delete-recording")}
+                        }
+                        button { class: "button secondary", onclick: move |_| confirm_delete.set(false), {t!("keep-recording")} }
+                    } else {
+                        button {
+                            class: "button secondary",
+                            // Not while it's being replayed.
+                            disabled: ctx.replaying.read().is_some_and(|r| r == id),
+                            onclick: move |_| confirm_delete.set(true),
+                            {t!("delete-recording")}
+                        }
+                    }
+                }
             }
         }
     }

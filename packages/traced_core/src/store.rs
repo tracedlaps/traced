@@ -243,6 +243,13 @@ impl Store {
         Ok(())
     }
 
+    /// Deletes the recording, with its fixes and samples.
+    pub fn delete_recording(&self, id: Uuid) -> Result<(), StoreError> {
+        self.db
+            .execute("DELETE FROM recordings WHERE id = ?1", [id.to_string()])?;
+        Ok(())
+    }
+
     /// Starts saving a recording, under a new id; its fixes follow through `append_fix`.
     pub fn begin_recording(
         &self,
@@ -745,6 +752,20 @@ mod tests {
         store.delete_track(spec.uuid()).unwrap();
         assert_eq!(store.recordings().unwrap().len(), 1);
         assert!(store.fixes(timed).unwrap().is_empty());
+    }
+
+    #[test]
+    fn deleting_a_recording_deletes_its_fixes_and_samples() {
+        let store = Store::open(":memory:").unwrap();
+        let gone = save(&store, &summary(None, 100));
+        let kept = save(&store, &summary(None, 200));
+
+        store.delete_recording(gone).unwrap();
+        let ids: Vec<_> = store.recordings().unwrap().iter().map(|r| r.id).collect();
+        assert_eq!(ids, [kept]);
+        assert!(store.fixes(gone).unwrap().is_empty());
+        assert!(store.samples(gone).unwrap().is_empty());
+        assert!(!store.fixes(kept).unwrap().is_empty());
     }
 
     #[test]
