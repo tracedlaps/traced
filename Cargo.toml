@@ -22,3 +22,10 @@ ui = { path = "packages/ui" }
 api = { path = "packages/api" }
 traced_core = { path = "packages/traced_core" }
 changelog = { path = "packages/changelog" }
+
+# tao 0.34's Android event loop loses EventLoopProxy wakes that land with a lifecycle callback,
+# stalling Dioxus (renders and async tasks) until something else wakes it; e.g. a permission
+# result arriving as the activity resumes. vendor/tao is 0.34.8 with tao 0.37's fix backported.
+# Drop it once Dioxus depends on tao >= 0.37.
+[patch.crates-io]
+tao = { path = "vendor/tao" }
