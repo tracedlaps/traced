@@ -1,5 +1,11 @@
 # Novidades
 
+## 0.7.0 - 2026-10-01
+
+- Uma pequena apresentação da primeira vez que abre o Traced: o que fazem o velocímetro, o cronómetro de voltas e o editor de pistas, e porque é que o Traced precisa da sua localização e das notificações, antes de o Android perguntar. Veja-a de novo quando quiser em Definições → Tutorial.
+- As Pistas e o Histórico dizem agora o que fazer enquanto ainda estão vazios.
+- Corrigido o Traced que por vezes ficava parado depois de responder a um pedido de permissão ou de voltar à app.
+
 ## 0.6.0 - 2026-10-01
 
 - Apague uma gravação de que já não precisa: abra-a no Histórico e toque em Apagar gravação, no fundo.

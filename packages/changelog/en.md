@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.0 - 2026-10-01
+
+- A short welcome the first time you open Traced: what the speedometer, lap timer and track editor do, then why Traced needs your location and notifications, before Android asks. See it again any time in Settings → Tutorial.
+- Tracks and History now tell you what to do while they're still empty.
+- Fixed Traced sometimes freezing after you answered a permission request or came back to the app.
+
 ## 0.6.0 - 2026-10-01
 
 - Delete a recording you no longer want: open it in History and tap Delete recording at the bottom.
