@@ -1,4 +1,4 @@
-package dev.traced.gps
+package dev.traced.background
 
 import android.app.NotificationChannel
 import android.app.NotificationManager

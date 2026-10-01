@@ -28,7 +28,6 @@ extern "Kotlin" {
     pub fn stop(this: &GpsPlugin) -> String;
     pub fn drain_fixes(this: &GpsPlugin) -> String;
     pub fn status(this: &GpsPlugin) -> String;
-    pub fn set_recording(this: &GpsPlugin, on: bool) -> String;
     pub fn open_app_settings(this: &GpsPlugin) -> String;
 }
 
@@ -78,11 +77,6 @@ impl AndroidGpsProvider {
 
     pub fn location_enabled(&self) -> Result<bool, GpsError> {
         invoke::<StatusDto>(status(&self.plugin)).map(|s| s.location_enabled)
-    }
-
-    /// Keeps the screen on and the recording alive with the phone locked (a foreground service).
-    pub fn set_recording(&self, on: bool) -> Result<(), GpsError> {
-        invoke(set_recording(&self.plugin, on))
     }
 
     /// `force_location_manager` (dev) skips Fused.

@@ -42,6 +42,18 @@ permission-ask = Location permission is asked for on Start
 permission-granted = Location permission granted
 permission-blocked = Location permission is blocked. Allow it in Settings, then Start again.
 
+## Background guide
+guide-title = Keep recording with the screen off
+guide-why = Your phone's battery manager can close Traced while the screen is off, ending the recording. Allow it to run in the background:
+guide-killed-title = Your last recording was cut short
+guide-killed = Your phone's battery manager closed Traced while it was recording. Allow it to run in the background so it doesn't happen again:
+guide-step-settings = Tap Open settings.
+guide-step-battery = Open Battery usage (or Battery).
+guide-step-allow = Choose Allow background activity (on some phones, Unrestricted).
+guide-done = Done
+guide-not-yet = Traced still isn't allowed to run in the background. Follow the steps, then tap Done.
+guide-skip = Not now
+
 ## Tracks and speedometer
 tracks = Tracks
 no-tracks = No tracks yet.

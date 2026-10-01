@@ -9,13 +9,10 @@ import android.location.GnssStatus
 import android.location.Location
 import android.location.LocationManager
 import android.net.Uri
-import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
-import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
-import android.view.WindowManager
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationCompat
 import androidx.core.location.LocationListenerCompat
@@ -52,8 +49,6 @@ class GpsPlugin(
 
     @Volatile private var satellitesUsed = 0
 
-    private var askedBatteryExemption = false
-
     private val fusedCallback =
         object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) = result.locations.forEach { push(it, FUSED) }
@@ -71,7 +66,7 @@ class GpsPlugin(
     /** Fires the dialog through MainActivity's launcher and waits (≤60 s) for the user's answer. Never call on the UI thread. */
     fun requestPermissions(): String {
         val fire = requestLocationPermission
-        if ((!hasPermission() || !hasNotificationPermission()) && fire != null) {
+        if (!hasPermission() && fire != null) {
             val latch = CountDownLatch(1).also { pendingResult = it }
             activity.runOnUiThread { fire() }
             latch.await(PERMISSION_WAIT_SECONDS, TimeUnit.SECONDS)
@@ -123,21 +118,6 @@ class GpsPlugin(
             source = null
             satellitesUsed = 0
             fixes.clear()
-            ok(null)
-        }
-
-    /** Keeps the screen on and, with the permission, runs [RecordingService] so recording survives a locked phone. */
-    fun setRecording(on: Boolean): String =
-        guard {
-            val flag = WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-            activity.runOnUiThread { if (on) activity.window.addFlags(flag) else activity.window.clearFlags(flag) }
-            val service = Intent(activity, RecordingService::class.java)
-            if (!on) {
-                activity.stopService(service)
-            } else if (hasPermission()) {
-                ContextCompat.startForegroundService(activity, service)
-                askBatteryExemption()
-            }
             ok(null)
         }
 
@@ -212,24 +192,6 @@ class GpsPlugin(
 
     private fun hasPermission(): Boolean =
         ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-
-    /**
-     * Once per app run, asks to lift battery optimisation: OEM battery managers (e.g. OnePlus's) kill
-     * even a foreground service after minutes with the screen off. The APK is sideloaded, so Play's limits on this don't apply.
-     */
-    @SuppressLint("BatteryLife")
-    private fun askBatteryExemption() {
-        val power = activity.getSystemService(PowerManager::class.java)
-        if (askedBatteryExemption || power.isIgnoringBatteryOptimizations(activity.packageName)) return
-        askedBatteryExemption = true
-        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.fromParts("package", activity.packageName, null))
-        activity.runOnUiThread { activity.startActivity(intent) }
-    }
-
-    /** Shows the recording notification; implied before Android 13. */
-    private fun hasNotificationPermission(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
     private inline fun guard(block: () -> String): String =
         try {

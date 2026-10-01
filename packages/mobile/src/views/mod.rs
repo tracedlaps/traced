@@ -1,6 +1,7 @@
 mod backup;
 mod capture;
 mod editor;
+mod guide;
 mod history;
 mod live;
 mod map;

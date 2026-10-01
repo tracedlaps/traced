@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 
+use super::guide::BackgroundGuide;
 use crate::{recorder::RecorderCtx, storage::PickedFile, update::Latest, Route};
 
 // 24×24 stroke icons.
@@ -33,7 +34,11 @@ pub fn Shell() -> Element {
             } else if let Some(release) = update {
                 Link { class: "update-bar", to: Route::Settings {}, onclick: move |_| seen.set(true), {t!("update-available", version: release.version)} }
             }
-            Outlet::<Route> {}
+            if let Some(guide) = ctx.guide.read().clone() {
+                BackgroundGuide { guide }
+            } else {
+                Outlet::<Route> {}
+            }
             nav { class: "tabs",
                 Tab { to: Route::History {}, icon: HISTORY, label: t!("tab-history"),
                     active: matches!(route, Route::History {} | Route::SavedResults { .. }) }

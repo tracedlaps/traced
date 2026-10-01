@@ -19,14 +19,27 @@ use traced_core::{
 use uuid::Uuid;
 
 use crate::{
+    background::Check,
     gps::wire::Permission,
     storage,
     tracks::{mock_speed_kmh, PRESETS},
 };
 #[cfg(target_os = "android")]
-use {crate::{gps::android::AndroidGpsProvider, imu::AndroidImu}, dioxus::logger::tracing::warn};
+use {
+    crate::{background::AndroidBackground, gps::android::AndroidGpsProvider, imu::AndroidImu},
+    dioxus::logger::tracing::warn,
+};
 
 type Fixes = BoxStream<'static, Result<GPSFix, GpsError>>;
+
+/// Why the guide to allowing Traced in the background is showing.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Guide {
+    /// On Start, on a phone whose battery manager ignores the system exemption, while Traced isn't allowed.
+    Start,
+    /// The last recording was killed.
+    Killed,
+}
 
 /// App-wide recording state. Components only read the snapshot signals; channels stay in here.
 #[derive(Clone, Copy)]
@@ -57,9 +70,18 @@ pub struct RecorderCtx {
     /// Dev switches: drive the mock instead of the device GPS, and skip Fused.
     pub use_mock: Signal<bool>,
     pub force_location_manager: Signal<bool>,
+    /// The background guide, while it shows.
+    pub guide: Signal<Option<Guide>>,
+    /// Not now was chosen: no `Guide::Start` again until the app restarts.
+    guide_skipped: Signal<bool>,
+    /// The system's battery exemption isn't enough on this phone (see `Guide::Start`).
+    strict: bool,
     /// App-lifetime device GPS (leaked once at startup); `None` if the plugin failed to load.
     #[cfg(target_os = "android")]
     device: Option<&'static AndroidGpsProvider>,
+    /// App-lifetime screen-off keeper; `None` if its plugin failed to load.
+    #[cfg(target_os = "android")]
+    background: Option<&'static AndroidBackground>,
     /// App-lifetime accelerometer; `None` if its plugin failed to load.
     #[cfg(target_os = "android")]
     imu: Option<&'static AndroidImu>,
@@ -83,6 +105,12 @@ impl RecorderCtx {
         };
         #[cfg(not(target_os = "android"))]
         let device: Option<((), Permission)> = None;
+        #[cfg(target_os = "android")]
+        let background = AndroidBackground::new().map(|b| &*Box::leak(Box::new(b)));
+        #[cfg(target_os = "android")]
+        let check = background.and_then(|b| b.check().inspect_err(|e| warn!("background check: {e}")).ok());
+        #[cfg(not(target_os = "android"))]
+        let check: Option<Check> = None;
         // Owned by the root scope, where `spawn_forever` runs the tasks that write them.
         let ctx = Self {
             recording: Signal::new_in_scope(None, ScopeId::ROOT),
@@ -104,8 +132,13 @@ impl RecorderCtx {
             ),
             use_mock: Signal::new_in_scope(!cfg!(target_os = "android"), ScopeId::ROOT),
             force_location_manager: Signal::new_in_scope(false, ScopeId::ROOT),
+            guide: Signal::new_in_scope(check.filter(|c| c.killed).map(|_| Guide::Killed), ScopeId::ROOT),
+            guide_skipped: Signal::new_in_scope(false, ScopeId::ROOT),
+            strict: check.is_some_and(|c| c.strict),
             #[cfg(target_os = "android")]
             device: device.map(|(gps, _)| gps),
+            #[cfg(target_os = "android")]
+            background,
             #[cfg(target_os = "android")]
             imu: AndroidImu::new().map(|imu| &*Box::leak(Box::new(imu))),
         };
@@ -131,6 +164,37 @@ impl RecorderCtx {
         self.saved.set(saved);
         self.run(recording, track);
         Ok(())
+    }
+
+    /// Shows the guide instead of recording, if this is a strict phone where Traced isn't allowed in the background.
+    pub fn guide_on_start(mut self) -> bool {
+        let show = self.strict && !*self.use_mock.peek() && !*self.guide_skipped.peek() && !self.exempt();
+        if show {
+            self.guide.set(Some(Guide::Start));
+        }
+        show
+    }
+
+    /// Closes the guide, unless it's still needed (`false`).
+    pub fn guide_done(mut self) -> bool {
+        let done = *self.guide.peek() == Some(Guide::Killed) || self.exempt();
+        if done {
+            self.guide.set(None);
+        }
+        done
+    }
+
+    /// Closes the guide even if it's still needed, until the app restarts.
+    pub fn skip_guide(mut self) {
+        self.guide_skipped.set(true);
+        self.guide.set(None);
+    }
+
+    fn exempt(self) -> bool {
+        #[cfg(target_os = "android")]
+        return self.background.is_none_or(|b| b.check().is_ok_and(|c| c.exempt));
+        #[cfg(not(target_os = "android"))]
+        true
     }
 
     /// Plays saved recording `id` back on the live screen (only around its `timed` part, if given),
@@ -272,7 +336,7 @@ impl RecorderCtx {
 
     fn set_recording(self, _on: bool) {
         #[cfg(target_os = "android")]
-        if let Some(Err(e)) = self.device.map(|gps| gps.set_recording(_on)) {
+        if let Some(Err(e)) = self.background.map(|b| b.set_recording(_on)) {
             warn!("set recording: {e}");
         }
     }

@@ -110,6 +110,9 @@ fn StartPanel(track: Option<usize>) -> Element {
             // The shell's bar leads back to a recording in progress.
             disabled: ctx.recording.read().is_some() || ctx.capture.read().is_some(),
             onclick: move |_| async move {
+                if ctx.guide_on_start() {
+                    return;
+                }
                 match ctx.start(track.and_then(|i| tracks.read().get(i).cloned())).await {
                     Ok(()) => {
                         refused.set(None);

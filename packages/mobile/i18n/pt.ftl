@@ -42,6 +42,18 @@ permission-ask = A permissão de localização é pedida ao Iniciar
 permission-granted = Permissão de localização concedida
 permission-blocked = A permissão de localização está bloqueada. Permita-a nas Definições e inicie de novo.
 
+## Background guide
+guide-title = Continuar a gravar com o ecrã desligado
+guide-why = O gestor de bateria do telemóvel pode fechar o Traced com o ecrã desligado, terminando a gravação. Permita que funcione em segundo plano:
+guide-killed-title = A última gravação foi interrompida
+guide-killed = O gestor de bateria do telemóvel fechou o Traced durante a gravação. Permita que funcione em segundo plano para não voltar a acontecer:
+guide-step-settings = Toque em Abrir definições.
+guide-step-battery = Abra Utilização da bateria (ou Bateria).
+guide-step-allow = Escolha Permitir atividade em segundo plano (nalguns telemóveis, Sem restrições).
+guide-done = Concluído
+guide-not-yet = O Traced ainda não tem permissão para funcionar em segundo plano. Siga os passos e toque em Concluído.
+guide-skip = Agora não
+
 ## Tracks and speedometer
 tracks = Pistas
 no-tracks = Ainda não há pistas.

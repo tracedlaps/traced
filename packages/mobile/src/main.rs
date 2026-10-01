@@ -8,6 +8,7 @@ use views::{
 
 #[cfg(target_os = "android")]
 mod android;
+mod background;
 mod gps;
 mod i18n;
 mod imu;
