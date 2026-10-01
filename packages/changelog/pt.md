@@ -1,5 +1,10 @@
 # Novidades
 
+## 0.5.1 - 2026-10-01
+
+- As gravações com o ecrã desligado já não param em telemóveis OnePlus, OPPO e realme. O gestor de bateria destes telemóveis fecha o Traced mesmo depois de lhe permitir funcionar em segundo plano, por isso Iniciar mostra agora um pequeno guia para a definição que o mantém a funcionar (Utilização da bateria → Permitir atividade em segundo plano), até estar ativa.
+- Se o telemóvel fechar o Traced a meio de uma gravação, o Traced avisa da próxima vez que o abrir e mostra como evitar que volte a acontecer.
+
 ## 0.5.0 - 2026-09-29
 
 - Atualize a partir da app. Quando sai uma nova versão, uma barra no topo do ecrã leva-o às Definições, onde Atualizações mostra as novidades e instala a nova versão com um toque. Da primeira vez, o Android pede para permitir instalações a partir do Traced: permita e toque em Instalar outra vez (o Traced reinicia quando o faz).

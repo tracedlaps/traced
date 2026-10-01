@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1 - 2026-10-01
+
+- Recordings with the screen off no longer stop on OnePlus, OPPO and realme phones. Their battery manager closes Traced even after you allow it in the background, so on these phones Start now shows a short guide to the setting that keeps it running (Battery usage → Allow background activity) until it's on.
+- If your phone closes Traced in the middle of a recording, Traced tells you the next time you open it and shows how to stop it happening again.
+
 ## 0.5.0 - 2026-09-29
 
 - Update from inside the app. When a new version is out, a bar at the top of the screen takes you to Settings, where Updates shows what's new and installs it with one tap. The first time, Android asks you to allow installs from Traced: allow it, then tap Install again (Traced restarts when you do).
