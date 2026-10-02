@@ -10,6 +10,9 @@ members = [
   "packages/changelog",
 ]
 
+[workspace.package]
+license = "GPL-3.0-or-later"
+
 [workspace.dependencies]
 dioxus = { version = "0.7.1" }
 thiserror = "2.0.20"
