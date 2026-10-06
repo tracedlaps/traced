@@ -1,10 +1,12 @@
 # Novidades
 
-## 0.7.0 - 2026-10-01
+## 0.7.1 - 2026-10-06
 
 - Uma pequena apresentação da primeira vez que abre o Traced: o que fazem o velocímetro, o cronómetro de voltas e o editor de pistas, e porque é que o Traced precisa da sua localização e das notificações, antes de o Android perguntar. Veja-a de novo quando quiser em Definições → Tutorial.
 - As Pistas e o Histórico dizem agora o que fazer enquanto ainda estão vazios.
 - Corrigido o Traced que por vezes ficava parado depois de responder a um pedido de permissão ou de voltar à app.
+- O medidor de G no ecrã ao vivo lê-se agora como o de um carro: o g de cada lado ao curvar, travar ou acelerar, com os seus picos desenhados como arcos.
+- Corrigida a criação e edição de pistas, que deixou de funcionar na 0.7.0.
 
 ## 0.6.0 - 2026-10-01
 

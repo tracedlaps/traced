@@ -3907,7 +3907,7 @@ dependencies = [
 
 [[package]]
 name = "mobile"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "async-stream",
  "changelog",

@@ -1,10 +1,12 @@
 # Changelog
 
-## 0.7.0 - 2026-10-01
+## 0.7.1 - 2026-10-06
 
 - A short welcome the first time you open Traced: what the speedometer, lap timer and track editor do, then why Traced needs your location and notifications, before Android asks. See it again any time in Settings → Tutorial.
 - Tracks and History now tell you what to do while they're still empty.
 - Fixed Traced sometimes freezing after you answered a permission request or came back to the app.
+- The G-meter on the live screen now reads like a car's: the g on each side as you corner, brake or accelerate, with your peaks drawn as arcs.
+- Fixed creating and editing tracks, which stopped working in 0.7.0.
 
 ## 0.6.0 - 2026-10-01
 
