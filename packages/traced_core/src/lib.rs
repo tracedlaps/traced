@@ -1,3 +1,4 @@
+pub mod braking;
 pub mod clock;
 pub mod gps;
 pub mod imu;

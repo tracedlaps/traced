@@ -32,12 +32,10 @@ pub struct Reference {
 impl Reference {
     /// `fixes` may span the whole recording; only those during `lap` are used.
     pub fn new(track: &Track, lap: Lap, fixes: &[GPSFix]) -> Self {
-        let (start, end) = (lap.crossings()[0], lap.crossings()[lap.crossings().len() - 1]);
+        let start = lap.crossings()[0];
         let length = track.lap_length();
-        let mut progress = Progress::new(track);
         let mut trace = vec![(0.0, TimeDelta::zero())];
-        for f in fixes.iter().filter(|f| start < f.timestamp && f.timestamp < end) {
-            let d = progress.advance(track, track.projection.project(Point::new(f.longitude, f.latitude)).0);
+        for (d, f) in along_lap(track, &lap, fixes) {
             // Jitter steps back, and interpolation needs the distances increasing.
             if trace[trace.len() - 1].0 < d && d < length {
                 trace.push((d, f.timestamp - start));
@@ -54,6 +52,17 @@ impl Reference {
         let frac = ((d - d0) / (d1 - d0)).clamp(0.0, 1.0);
         t0 + TimeDelta::nanoseconds(((t1 - t0).num_nanoseconds().unwrap_or(0) as f64 * frac) as i64)
     }
+}
+
+/// `lap`'s fixes, each with its distance past the start gate (m). `fixes` may span the whole recording.
+pub fn along_lap(track: &Track, lap: &Lap, fixes: &[GPSFix]) -> Vec<(f64, GPSFix)> {
+    let (start, end) = (lap.crossings()[0], lap.crossings()[lap.crossings().len() - 1]);
+    let mut progress = Progress::new(track);
+    fixes
+        .iter()
+        .filter(|f| start < f.timestamp && f.timestamp < end)
+        .map(|&f| (progress.advance(track, track.projection.project(Point::new(f.longitude, f.latitude)).0), f))
+        .collect()
 }
 
 /// Distance travelled past the start gate, following fixes along the track. Unwraps a

@@ -16,7 +16,6 @@ use super::{
     shell::HISTORY,
     map::{Map, View},
     results::Report,
-    track_map::{Layout, TrackSvg},
 };
 use crate::{i18n::local_date, recorder::RecorderCtx, storage, units::Units, Route};
 
@@ -93,13 +92,11 @@ pub fn SavedResults(id: Uuid) -> Element {
                 }
             }
             div { class: "scroll",
-                // Its track, or without one, where it went.
-                match &track {
-                    Some(t) => rsx! { TrackSvg { layout: Layout::new(t), current: None } },
-                    None if r.session.is_none() => rsx! { RecordingMap { id } },
-                    None => rsx! {},
+                // Without a track, where it went; a track's map comes with its braking zones.
+                if r.session.is_none() {
+                    RecordingMap { id }
                 }
-                Report { speed: r.speedometer, session: r.session, g: r.g }
+                Report { speed: r.speedometer, session: r.session, g: r.g, fixes: storage::fixes(id) }
                 section { class: "backup",
                     if let Some(e) = error() {
                         p { class: "error", "{e}" }

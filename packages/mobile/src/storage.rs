@@ -16,7 +16,7 @@ use traced_core::{
     imu::{Alignment, ImuSample},
     recorder::{FixConsumer, RecordingSummary},
     store::{SavedRecording, Store, StoreError},
-    timing::Reference,
+    timing::{along_lap, best_lap, Reference},
     track::{Track, TrackBuilder},
 };
 
@@ -209,6 +209,16 @@ pub fn last_alignment() -> Option<Alignment> {
 /// The best lap on `track` so far, to race against.
 pub fn reference(track: &Track) -> Option<Reference> {
     with_store("load best lap", |s| s.reference(track)).flatten()
+}
+
+/// The best lap on `track` so far, each fix with its distance past the start gate; empty before any.
+pub fn best_lap_along(track: &Track) -> Vec<(f64, GPSFix)> {
+    with_store("load best lap", |s| {
+        let recordings = s.recordings()?;
+        let Some((id, lap)) = best_lap(&recordings, track.uuid) else { return Ok(Vec::new()) };
+        Ok(along_lap(track, lap, &s.fixes(id)?))
+    })
+    .unwrap_or_default()
 }
 
 /// Saved recording `id`'s fixes.

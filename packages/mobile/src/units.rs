@@ -20,17 +20,14 @@ impl Units {
         consume_context::<Signal<Units>>()()
     }
 
+    /// km/h or mph in one m/s.
+    pub fn per_ms(self) -> f64 {
+        if self == Self::Imperial { 2.236_936 } else { 3.6 }
+    }
+
     /// Whole km/h or mph.
     pub fn speed_value(self, ms: impl Into<f64>) -> String {
-        format!(
-            "{:.0}",
-            ms.into()
-                * if self == Self::Imperial {
-                    2.236_936
-                } else {
-                    3.6
-                }
-        )
+        format!("{:.0}", ms.into() * self.per_ms())
     }
 
     pub fn speed_unit(self) -> &'static str {
@@ -54,13 +51,18 @@ impl Units {
         }
     }
 
+    /// m or ft in one metre.
+    pub fn per_m(self) -> f64 {
+        if self == Self::Imperial { 3.280_84 } else { 1.0 }
+    }
+
+    pub fn length_unit(self) -> &'static str {
+        if self == Self::Imperial { "ft" } else { "m" }
+    }
+
     /// A track's or gate's length: whole m or ft.
     pub fn length(self, m: impl Into<f64>) -> String {
-        let m = m.into();
-        match self {
-            Self::Metric => format!("{m:.0} m"),
-            Self::Imperial => format!("{:.0} ft", m * 3.280_84),
-        }
+        format!("{:.0} {}", m.into() * self.per_m(), self.length_unit())
     }
 }
 

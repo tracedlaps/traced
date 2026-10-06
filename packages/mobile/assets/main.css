@@ -81,7 +81,26 @@ small.interrupted { color: var(--accent); }
 .laps { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .laps th, .laps td { padding: 8px 4px; border-bottom: 1px solid var(--line); text-align: left; }
 .laps th { color: var(--muted); font-weight: 500; }
+.laps tr.shown td { background: var(--line); }
 .gap { color: var(--accent); }
+.trace-legend { display: flex; gap: 16px; margin-top: 16px; color: var(--muted); font-size: 0.9rem; }
+.trace-legend .key::before { content: ""; display: inline-block; width: 18px; margin: 0 6px 4px 0; vertical-align: middle; border-top: 2px solid var(--accent); }
+.trace-legend .key.pb::before { border-top: 2px dashed var(--muted); }
+.trace-readout { min-height: 1.4em; margin: 4px 0; color: var(--muted); font-variant-numeric: tabular-nums; }
+.trace-readout strong { color: var(--fg); }
+.speed-trace { display: block; width: 100%; height: auto; touch-action: pan-y; user-select: none; }
+.speed-trace .zone { fill: var(--stop); fill-opacity: 0.15; }
+.speed-trace .grid { stroke: var(--line); stroke-width: 1; }
+.speed-trace .axis { fill: var(--muted); font-size: 9px; font-variant-numeric: tabular-nums; }
+.speed-trace .axis.v { text-anchor: end; dominant-baseline: central; }
+.speed-trace .axis.d, .speed-trace .zone-n { text-anchor: middle; }
+.speed-trace polyline { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.speed-trace .lap-line { stroke: var(--accent); }
+.speed-trace .pb-line { stroke: var(--muted); stroke-dasharray: 4 3; }
+.speed-trace .cross { stroke: var(--muted); stroke-width: 1; }
+.speed-trace .dot { stroke: var(--bg); stroke-width: 2; }
+.speed-trace .dot.lap { fill: var(--accent); }
+.speed-trace .dot.pb { fill: var(--muted); }
 .delta { font-weight: 700; font-variant-numeric: tabular-nums; }
 .delta.ahead { color: var(--ahead); }
 .delta.behind { color: var(--stop); }
@@ -107,6 +126,10 @@ small.interrupted { color: var(--accent); }
 .track-map .outline { fill: none; stroke: var(--line); stroke-width: 6px; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 .track-map .sector { fill: none; stroke-width: 6px; stroke-opacity: 0.35; stroke-linejoin: round; vector-effect: non-scaling-stroke; transition: stroke-opacity 0.3s; }
 .track-map .sector.current { stroke-opacity: 0.9; }
+.track-map .brake { fill: none; stroke: var(--stop); stroke-width: 6px; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.track-map circle.brake-n { fill: var(--stop); }
+.track-map text.brake-n { fill: white; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+.track-map .pb-brake { fill: none; stroke: var(--muted); stroke-width: 2px; vector-effect: non-scaling-stroke; }
 .track-map .gate { stroke: var(--muted); stroke-width: 2px; vector-effect: non-scaling-stroke; }
 .track-map .gate.boundary { stroke: var(--fg); stroke-width: 3px; }
 .track-map .arrow, .track-overlay .arrow { fill: none; stroke: var(--muted); stroke-width: 2px; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }

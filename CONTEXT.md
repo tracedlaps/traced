@@ -118,6 +118,9 @@ The lap raced against while recording (`timing::Reference`): the `Personal best`
 **Delta**:
 The time gap to the `Reference lap`, positive when behind. Live, it's the lap so far minus the reference's time at the same distance along the track (`Track::locate`); at each gate it's exact, from both laps' crossings. Also per lap and per sector.
 
+**Braking zone**:
+Where a lap slowed for a corner (`braking::BrakingZone`), from GPS speed alone: from a top speed, a drop of at least 3 m/s until speed picks up again, starting where slowing first reaches half the zone's peak (so coasting before it doesn't count, on a gentle descent as on a kart). Positions are distances past the start gate (`timing::along_lap`). Compared with the `Personal best`'s zone starting nearest, within 50 m. Derived, never stored.
+
 ## Implementation status (2026-09-24)
 
 `packages/traced_core/src/track/mod.rs` is implemented and tested: `Projection` (project/unproject), `TrackBuilder::build()` (project → close if Closed → densify to 2 m → place boundary + sector gates → validate order → sort sectors from the start gate), `Track::{length, gates_ordered, sectors}`, `Gate::segment`, and `Sector<'a>` as a borrowed view.
