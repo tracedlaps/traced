@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.webkit.WebView
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import dev.traced.background.BackgroundPlugin
 import dev.traced.gps.GpsPlugin
@@ -32,6 +34,26 @@ class MainActivity : WryActivity() {
             StoragePlugin::onFileChosen,
         )
 
+    private var webView: WebView? = null
+
+    // The screens live in Rust's router, not the WebView's history, so back asks it to go back a
+    // screen (`window.tracedBack`, set by the app) and only leaves Traced from the first one.
+    private val back = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            val view = webView ?: return leave()
+            view.evaluateJavascript("window.tracedBack?.() === true") { if (it != "true") leave() }
+        }
+    }
+
+    // To the background, not finished, so a recording carries on.
+    private fun leave() {
+        moveTaskToBack(true)
+    }
+
+    override fun onWebViewCreate(webView: WebView) {
+        this.webView = webView
+    }
+
     init {
         GpsPlugin.requestLocationPermission = { locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) }
         BackgroundPlugin.requestNotificationPermission = { notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
@@ -45,6 +67,7 @@ class MainActivity : WryActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         if (savedInstanceState == null) StoragePlugin.receive(this, intent)
         super.onCreate(savedInstanceState)
+        onBackPressedDispatcher.addCallback(this, back)
     }
 
     override fun onNewIntent(intent: Intent) {

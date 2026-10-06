@@ -16,7 +16,7 @@ main { display: flex; flex-direction: column; gap: 16px; padding: 24px 16px; wid
 .scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
 .scroll > * { flex-shrink: 0; }
 
-.shell { display: flex; flex-direction: column; height: 100%; }
+.shell { display: flex; flex-direction: column; height: 100%; overflow-x: clip; }
 .shell > main { flex: 1; }
 .live-bar, .update-bar { display: block; padding: 10px; background: var(--stop); color: white; text-align: center; font-weight: 600; text-decoration: none; }
 .update-bar { background: var(--accent); }

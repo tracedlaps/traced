@@ -16,6 +16,7 @@ use crate::{recorder::RecorderCtx, units::Units, Route};
 
 #[component]
 pub fn Live() -> Element {
+    super::shell::use_back();
     let ctx = use_context::<RecorderCtx>();
     if ctx.recording.read().is_none() {
         return rsx! {
