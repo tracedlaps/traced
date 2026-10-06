@@ -234,12 +234,13 @@ pub(super) fn Editor(initial: Draft, on_close: EventHandler) -> Element {
                     }
                 }
                 p { class: "note",
-                    {t!(match mode() {
-                        Mode::Draw if selected().is_some() => "hint-selected",
-                        Mode::Draw => "hint-draw",
-                        Mode::Sector => "hint-sectors",
-                        _ => "hint-gate",
-                    })}
+                    // A `t!` per key, so the i18n test sees them all.
+                    {match mode() {
+                        Mode::Draw if selected().is_some() => t!("hint-selected"),
+                        Mode::Draw => t!("hint-draw"),
+                        Mode::Sector => t!("hint-sectors"),
+                        _ => t!("hint-gate"),
+                    }}
                 }
                 div { class: "row",
                     button {
