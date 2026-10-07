@@ -11,5 +11,5 @@ identifier = "com.tracedlaps.app"
 
 [android]
 min_sdk = 26
-target_sdk = 34
+target_sdk = 36
 features = ["android.hardware.location.gps"]

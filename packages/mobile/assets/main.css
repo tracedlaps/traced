@@ -11,7 +11,8 @@
 * { box-sizing: border-box; }
 /* The app is exactly one screen tall; only .scroll areas scroll. */
 html, body, #main { height: 100%; overflow: hidden; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.4 system-ui, sans-serif; }
+/* Android 15+ draws edge to edge: keep clear of the status bar. */
+body { padding-top: env(safe-area-inset-top); margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.4 system-ui, sans-serif; }
 main { display: flex; flex-direction: column; gap: 16px; padding: 24px 16px; width: 100%; max-width: 480px; margin: 0 auto; height: 100%; min-height: 0; }
 .scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
 .scroll > * { flex-shrink: 0; }
