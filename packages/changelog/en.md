@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.2 - 2026-10-07
+
+- Smaller download: Traced is now about 15 MB instead of 17 MB.
+- Ready for Android 16, ahead of Traced arriving on Google Play.
+
 ## 0.8.1 - 2026-10-07
 
 - No more flash of oversized icons when Traced starts.

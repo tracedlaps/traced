@@ -1,5 +1,10 @@
 # Novidades
 
+## 0.8.2 - 2026-10-07
+
+- Transferência mais pequena: o Traced tem agora cerca de 15 MB em vez de 17 MB.
+- Preparado para o Android 16, antes da chegada do Traced ao Google Play.
+
 ## 0.8.1 - 2026-10-07
 
 - Já não aparecem ícones gigantes por instantes ao abrir o Traced.
