@@ -23,8 +23,13 @@ sed -i -e 's/isMinifyEnabled = true/isMinifyEnabled = false/' \
 # versionCode must grow each release or Android won't treat it as an update: 0.2.0 -> 200
 IFS=. read -r maj min pat < <(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
 sed -i "s/versionCode = .*/versionCode = $((maj * 10000 + min * 100 + pat))/" "$app/app/build.gradle.kts"
+# Gradle's strip step leaves libmain.so whole (36 MB): strip it here, keeping the symbols for Play's crash reports
+syms=$app/app/build/outputs/native-debug-symbols.zip
+rm -rf "$app/symbols" "$syms" && cp -r "$app/app/src/main/jniLibs" "$app/symbols"
+"${ANDROID_NDK_HOME:-$NDK_HOME}"/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip --strip-unneeded "$app"/app/src/main/jniLibs/*/*.so
 key=~/.config/traced
 if [[ $aab ]]; then
+    (cd "$app/symbols" && zip -qr "$syms" .) && echo "$syms"
     # Play rejects REQUEST_INSTALL_PACKAGES without an installer use case; dx regenerates this each build
     sed -i '/REQUEST_INSTALL_PACKAGES/d' "$app/plugins/storageplugin/src/main/AndroidManifest.xml"
     (cd "$app" && ./gradlew -q bundleRelease)
