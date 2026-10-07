@@ -88,19 +88,19 @@ small.interrupted { color: var(--accent); }
 .trace-legend .key.pb::before { border-top: 2px dashed var(--muted); }
 .trace-readout { min-height: 1.4em; margin: 4px 0; color: var(--muted); font-variant-numeric: tabular-nums; }
 .trace-readout strong { color: var(--fg); }
-.speed-trace { display: block; width: 100%; height: auto; touch-action: pan-y; user-select: none; }
-.speed-trace .zone { fill: var(--stop); fill-opacity: 0.15; }
-.speed-trace .grid { stroke: var(--line); stroke-width: 1; }
-.speed-trace .axis { fill: var(--muted); font-size: 9px; font-variant-numeric: tabular-nums; }
-.speed-trace .axis.v { text-anchor: end; dominant-baseline: central; }
-.speed-trace .axis.d, .speed-trace .zone-n { text-anchor: middle; }
-.speed-trace polyline { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.speed-trace .lap-line { stroke: var(--accent); }
-.speed-trace .pb-line { stroke: var(--muted); stroke-dasharray: 4 3; }
-.speed-trace .cross { stroke: var(--muted); stroke-width: 1; }
-.speed-trace .dot { stroke: var(--bg); stroke-width: 2; }
-.speed-trace .dot.lap { fill: var(--accent); }
-.speed-trace .dot.pb { fill: var(--muted); }
+.lap-chart { display: block; width: 100%; height: auto; touch-action: pan-y; user-select: none; }
+.lap-chart .zone { fill: var(--stop); fill-opacity: 0.15; }
+.lap-chart .grid { stroke: var(--line); stroke-width: 1; }
+.lap-chart .axis { fill: var(--muted); font-size: 9px; font-variant-numeric: tabular-nums; }
+.lap-chart .axis.v { text-anchor: end; dominant-baseline: central; }
+.lap-chart .axis.d, .lap-chart .zone-n { text-anchor: middle; }
+.lap-chart polyline { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.lap-chart .lap-line { stroke: var(--accent); }
+.lap-chart .pb-line { stroke: var(--muted); stroke-dasharray: 4 3; }
+.lap-chart .cross { stroke: var(--muted); stroke-width: 1; }
+.lap-chart .dot { stroke: var(--bg); stroke-width: 2; }
+.lap-chart .dot.lap { fill: var(--accent); }
+.lap-chart .dot.pb { fill: var(--muted); }
 .delta { font-weight: 700; font-variant-numeric: tabular-nums; }
 .delta.ahead { color: var(--ahead); }
 .delta.behind { color: var(--stop); }

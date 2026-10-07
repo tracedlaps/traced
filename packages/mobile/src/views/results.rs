@@ -13,7 +13,7 @@ use traced_core::{
 
 use super::{
     lap_time,
-    speed_trace::SpeedTrace,
+    lap_chart::{LapChart, Quantity},
     track_map::{svg_point, Layout, SvgPoint, TrackSvg},
     Delta,
 };
@@ -113,10 +113,19 @@ pub fn Report(speed: SpeedometerSnapshot, session: Option<Session>, g: Option<GF
             }
         }
         if let Some((i, lap, pb_lap, zones, pb)) = braking {
-            SpeedTrace {
+            LapChart {
+                quantity: Quantity::Speed,
                 number: i + 1,
                 lap: lap.iter().map(|(d, f)| (*d, f.speed_ms)).collect(),
                 pb: pb_lap.iter().map(|(d, f)| (*d, f.speed_ms)).collect(),
+                zones: zones.iter().map(|z| (z.at_m, z.end_m)).collect(),
+            }
+            // Empty, so not drawn, when the GPS gave no altitude.
+            LapChart {
+                quantity: Quantity::Elevation,
+                number: i + 1,
+                lap: lap.iter().filter_map(|(d, f)| Some((*d, f.altitude_m?))).collect(),
+                pb: pb_lap.iter().filter_map(|(d, f)| Some((*d, f.altitude_m?))).collect(),
                 zones: zones.iter().map(|z| (z.at_m, z.end_m)).collect(),
             }
             h2 { {t!("braking-zones", lap: i + 1)} }

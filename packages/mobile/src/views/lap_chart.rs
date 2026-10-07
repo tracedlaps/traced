@@ -1,4 +1,4 @@
-//! A lap's speed against distance past the start gate, the PB's alongside, braking zones shaded.
+//! A lap's speed or elevation against distance past the start gate, the PB's alongside, braking zones shaded.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -8,36 +8,59 @@ use crate::units::Units;
 /// The drawing, in its own units; it scales to the screen's width.
 const W: f64 = 360.0;
 const H: f64 = 190.0;
-/// Room for speeds on the left, zone numbers above and distances below.
+/// Room for values on the left, zone numbers above and distances below.
 const LEFT: f64 = 28.0;
 const TOP: f64 = 14.0;
 const BOTTOM: f64 = 18.0;
 
-/// `lap` and `pb` are (distance, m/s) per fix; `zones` (from, to) distances, numbered as on the map.
-/// Touching the chart reads both speeds at that distance.
+/// What a trace plots, in SI: m/s, or metres above sea level.
+#[derive(Clone, Copy, PartialEq)]
+pub enum Quantity {
+    Speed,
+    Elevation,
+}
+
+impl Quantity {
+    /// Shown units in one SI unit.
+    fn per(self, units: Units) -> f64 {
+        if self == Self::Speed { units.per_ms() } else { units.per_m() }
+    }
+
+    fn show(self, units: Units, v: f32) -> String {
+        if self == Self::Speed { units.speed(v) } else { units.length(v) }
+    }
+}
+
+/// `lap` and `pb` are (distance, value) per fix; `zones` (from, to) distances, numbered as on the map.
+/// Touching the chart reads both values at that distance.
 #[component]
-pub fn SpeedTrace(number: usize, lap: Vec<(f64, f32)>, pb: Vec<(f64, f32)>, zones: Vec<(f64, f64)>) -> Element {
+pub fn LapChart(quantity: Quantity, number: usize, lap: Vec<(f64, f32)>, pb: Vec<(f64, f32)>, zones: Vec<(f64, f64)>) -> Element {
     let units = Units::current();
+    let per = quantity.per(units);
     let mut width = use_signal(|| W);
     let mut touched = use_signal(|| None::<f64>);
     let length = lap.iter().chain(&pb).map(|p| p.0).fold(0.0, f64::max);
-    let top = lap.iter().chain(&pb).map(|p| p.1 as f64 * units.per_ms()).fold(0.0, f64::max);
-    if length <= 0.0 || top <= 0.0 {
+    let (lo, hi) = lap.iter().chain(&pb).map(|p| p.1 as f64 * per).fold((f64::MAX, f64::MIN), |(lo, hi), v| (lo.min(v), hi.max(v)));
+    // Speeds from standstill; elevation at least 5 m or ft tall, so GPS noise on a flat track stays flat.
+    let (lo, hi) = if quantity == Quantity::Speed { (0.0, hi) } else { (lo, hi.max(lo + 5.0)) };
+    if lap.is_empty() || length <= 0.0 || hi <= lo {
         return rsx! {};
     }
-    let (v_step, d_step) = (nice(top), nice(length * units.per_m()) / units.per_m());
-    let v_max = (top / v_step).ceil() * v_step;
+    let (v_step, d_step) = (nice(hi - lo), nice(length * units.per_m()) / units.per_m());
+    let (v_min, v_max) = ((lo / v_step).floor() * v_step, (hi / v_step).ceil() * v_step);
     let x = move |d: f64| LEFT + d / length * (W - LEFT);
-    let y = move |ms: f32| TOP + (1.0 - ms as f64 * units.per_ms() / v_max) * (H - TOP - BOTTOM);
+    let ys = move |v: f64| TOP + (1.0 - (v - v_min) / (v_max - v_min)) * (H - TOP - BOTTOM);
+    let y = move |v: f32| ys(v as f64 * per);
     let line = |trace: &[(f64, f32)]| trace.iter().map(|&(d, v)| format!("{:.1},{:.1}", x(d), y(v))).collect::<Vec<_>>().join(" ");
     let read = move |e: PointerEvent| {
         let px = e.element_coordinates().x * W / width();
         touched.set(Some(((px - LEFT) / (W - LEFT) * length).clamp(0.0, length)));
     };
-    let at = touched().map(|d| (d, speed_at(&lap, d), speed_at(&pb, d)));
+    let at = touched().map(|d| (d, value_at(&lap, d), value_at(&pb, d)));
 
     rsx! {
         div { class: "trace-legend",
+            strong { if quantity == Quantity::Speed { {t!("trace-speed")} } else { {t!("trace-elevation")} } }
             span { class: "key lap", {t!("trace-lap", lap: number)} }
             if !pb.is_empty() { span { class: "key pb", {t!("pb")} } }
         }
@@ -45,14 +68,14 @@ pub fn SpeedTrace(number: usize, lap: Vec<(f64, f32)>, pb: Vec<(f64, f32)>, zone
             match at {
                 Some((d, v, p)) => rsx! {
                     "{units.length(d)}"
-                    if let Some(v) = v { " · " strong { "{units.speed(v)}" } }
-                    if let Some(p) = p { " · " {t!("pb")} " {units.speed(p)}" }
+                    if let Some(v) = v { " · " strong { {quantity.show(units, v)} } }
+                    if let Some(p) = p { " · " {t!("pb")} " " {quantity.show(units, p)} }
                 },
                 None => rsx! { {t!("trace-hint")} },
             }
         }
         svg {
-            class: "speed-trace",
+            class: "lap-chart",
             view_box: "0 0 {W} {H}",
             onresize: move |e| width.set(e.get_border_box_size().map_or(W, |s| s.width).max(1.0)),
             onpointerdown: read,
@@ -61,9 +84,9 @@ pub fn SpeedTrace(number: usize, lap: Vec<(f64, f32)>, pb: Vec<(f64, f32)>, zone
                 rect { class: "zone", x: x(from), y: TOP, width: (x(to) - x(from)).max(1.0), height: H - TOP - BOTTOM }
                 text { class: "axis zone-n", x: (x(from) + x(to)) / 2.0, y: TOP - 3.0, "{n + 1}" }
             }
-            for i in 0..=(v_max / v_step) as usize {
-                line { class: "grid", x1: LEFT, x2: W, y1: y((i as f64 * v_step / units.per_ms()) as f32), y2: y((i as f64 * v_step / units.per_ms()) as f32) }
-                text { class: "axis v", x: LEFT - 4.0, y: y((i as f64 * v_step / units.per_ms()) as f32), {label(i as f64 * v_step)} }
+            for v in (0..=((v_max - v_min) / v_step).round() as usize).map(|i| v_min + i as f64 * v_step) {
+                line { class: "grid", x1: LEFT, x2: W, y1: ys(v), y2: ys(v) }
+                text { class: "axis v", x: LEFT - 4.0, y: ys(v), {label(v)} }
             }
             for i in 0..=(length / d_step) as usize {
                 text { class: "axis d", x: x(i as f64 * d_step), y: H - 4.0, {label(i as f64 * d_step * units.per_m())} }
@@ -90,8 +113,8 @@ fn label(v: f64) -> String {
     format!("{}", (v * 10.0).round() / 10.0)
 }
 
-/// The speed `d` metres in, between the fixes either side; `None` outside the trace.
-fn speed_at(trace: &[(f64, f32)], d: f64) -> Option<f32> {
+/// The value `d` metres in, between the fixes either side; `None` outside the trace.
+fn value_at(trace: &[(f64, f32)], d: f64) -> Option<f32> {
     let i = trace.partition_point(|p| p.0 < d);
     let ((d0, v0), (d1, v1)) = (*trace.get(i.checked_sub(1)?)?, *trace.get(i)?);
     Some(if d1 > d0 { v0 + (v1 - v0) * ((d - d0) / (d1 - d0)) as f32 } else { v1 })
@@ -107,8 +130,8 @@ mod tests {
     }
 
     #[test]
-    fn speed_at_interpolates_inside_the_trace() {
+    fn value_at_interpolates_inside_the_trace() {
         let trace = [(0.0, 10.0), (10.0, 20.0), (30.0, 10.0)];
-        assert_eq!([speed_at(&trace, 5.0), speed_at(&trace, 20.0), speed_at(&trace, 31.0)], [Some(15.0), Some(15.0), None]);
+        assert_eq!([value_at(&trace, 5.0), value_at(&trace, 20.0), value_at(&trace, 31.0)], [Some(15.0), Some(15.0), None]);
     }
 }

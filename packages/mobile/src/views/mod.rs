@@ -3,6 +3,7 @@ mod capture;
 mod editor;
 mod guide;
 mod history;
+mod lap_chart;
 mod live;
 mod map;
 mod onboarding;
@@ -11,7 +12,6 @@ mod results;
 mod settings;
 mod share;
 mod shell;
-mod speed_trace;
 pub(crate) mod track_map;
 mod update;
 

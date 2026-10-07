@@ -50,7 +50,7 @@ const SWIPES: &str = r#"
         ({ clientX: x, clientY: y } = e.touches[0]);
         el = screen();
         dragging = false;
-        skip = !el || window.tracedTab < 0 || e.touches.length > 1 || !!e.target.closest(".leaflet-container, .speed-trace, input, textarea, select");
+        skip = !el || window.tracedTab < 0 || e.touches.length > 1 || !!e.target.closest(".leaflet-container, .lap-chart, input, textarea, select");
     }, options);
     document.addEventListener("touchmove", e => {
         if (skip) return;
