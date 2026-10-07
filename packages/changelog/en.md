@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.3 - 2026-10-07
+
+- Dates now show in Portuguese when you choose Português in Settings.
+
 ## 0.8.2 - 2026-10-07
 
 - Smaller download: Traced is now about 15 MB instead of 17 MB.

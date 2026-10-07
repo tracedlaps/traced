@@ -1,5 +1,9 @@
 # Novidades
 
+## 0.8.3 - 2026-10-07
+
+- As datas aparecem agora em português quando escolhe Português nas Definições.
+
 ## 0.8.2 - 2026-10-07
 
 - Transferência mais pequena: o Traced tem agora cerca de 15 MB em vez de 17 MB.
