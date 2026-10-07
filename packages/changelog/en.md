@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.0 - 2026-10-07
+
+- See where you braked on each lap: Results and History mark every braking zone on the track map, with where it started, entry and exit speed and peak g, against your best lap's braking for the same corner. Tap a lap to see it.
+- Speed and elevation charts for each lap, with your best lap alongside and the braking zones shaded. Touch a chart to read it.
+- Android's back button now goes back a screen instead of leaving Traced, and you can swipe sideways to move between tabs.
+
 ## 0.7.1 - 2026-10-06
 
 - A short welcome the first time you open Traced: what the speedometer, lap timer and track editor do, then why Traced needs your location and notifications, before Android asks. See it again any time in Settings → Tutorial.

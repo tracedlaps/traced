@@ -1,5 +1,11 @@
 # Novidades
 
+## 0.8.0 - 2026-10-07
+
+- Veja onde travou em cada volta: os Resultados e o Histórico marcam cada zona de travagem no mapa da pista, com onde começou, a velocidade de entrada e de saída e o pico de g, comparadas com a travagem da sua melhor volta na mesma curva. Toque numa volta para a ver.
+- Gráficos de velocidade e de altitude de cada volta, com a sua melhor volta ao lado e as zonas de travagem sombreadas. Toque num gráfico para o ler.
+- O botão de voltar do Android volta agora ao ecrã anterior em vez de sair do Traced, e pode deslizar para os lados para mudar de separador.
+
 ## 0.7.1 - 2026-10-06
 
 - Uma pequena apresentação da primeira vez que abre o Traced: o que fazem o velocímetro, o cronómetro de voltas e o editor de pistas, e porque é que o Traced precisa da sua localização e das notificações, antes de o Android perguntar. Veja-a de novo quando quiser em Definições → Tutorial.
