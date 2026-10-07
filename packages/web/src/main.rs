@@ -5,6 +5,7 @@ mod demo;
 const ICON: Asset = asset!("/assets/icon.svg");
 const FONTS: &str = "https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&display=swap";
 const ISSUES: &str = "https://github.com/tracedlaps/tracedlaps/issues";
+const SUPPORT: &str = "mailto:support@tracedlaps.com";
 const APK: &str = "https://github.com/tracedlaps/tracedlaps/releases/latest/download/traced.apk";
 
 const FEATURES: [(&str, &str, &str); 6] = [
@@ -73,6 +74,7 @@ fn Layout() -> Element {
                 span { class: "links",
                     Link { to: Route::Changelog {}, "Changelog" }
                     Link { to: Route::Privacy {}, "Privacy" }
+                    a { href: SUPPORT, "Support" }
                 }
             }
         }
@@ -130,7 +132,8 @@ fn Home() -> Element {
                     h2 { "Not on the Play Store, yet" }
                     p { class: "intro",
                         "Traced ships as an APK. Android asks once before installing an app from outside the store. It's in beta, so expect rough edges: found a bug or missing something? "
-                        a { href: ISSUES, "Open an issue" } "."
+                        a { href: ISSUES, "Open an issue" } " or "
+                        a { href: SUPPORT, "email us" } "."
                     }
                     Download {}
                 }
