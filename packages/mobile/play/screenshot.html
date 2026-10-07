@@ -1,0 +1,22 @@
+<!doctype html>
+<!-- A Play Store phone screenshot, 1080x1920: raw/<shot>.png under a caption. render.sh passes ?shot=&caption=. -->
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&display=block">
+<style>
+  html, body { margin: 0; width: 1080px; height: 1920px; overflow: hidden; background: #111317; }
+  h1 { position: absolute; left: 80px; right: 80px; top: 96px; margin: 0; text-align: center; color: #fafaf9;
+       font: 900 92px/0.9 "Archivo"; font-stretch: 62%; text-transform: uppercase; text-wrap: balance; }
+  h1 em { font-style: normal; color: #ea580c; }
+  /* The raw screen, 1080x2424, minus its 142px status bar, at 2/3 scale */
+  .screen { position: absolute; left: 180px; bottom: 0; width: 720px; height: 1521px; overflow: hidden;
+            border: 3px solid #2a2d33; border-bottom: 0; border-radius: 44px 44px 0 0; }
+  .screen img { display: block; width: 720px; margin-top: -95px; }
+</style>
+<h1 id="caption"></h1>
+<div class="screen"><img id="shot" alt=""></div>
+<script>
+  const q = new URLSearchParams(location.search);
+  document.getElementById('shot').src = `raw/${q.get('shot')}.png`;
+  // *word* marks the orange part
+  document.getElementById('caption').innerHTML = q.get('caption').replace(/\*(.+?)\*/g, '<em>$1</em>');
+</script>
