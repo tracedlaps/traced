@@ -6,8 +6,10 @@ use crate::{gps::GPSFix, imu::G, track::Waypoint};
 
 /// Slowing by at least this (m/s, ~11 km/h) from a top speed makes a braking zone…
 const MIN_DROP_MS: f32 = 3.0;
-/// …which ends once speed picks up this much from its lowest.
+/// …which ends once speed picks up this much from its lowest…
 const RISE_MS: f32 = 1.0;
+/// …and peaks at least this hard (g): gentler is air drag or a slope, coasting.
+const MIN_PEAK_G: f32 = 0.1;
 /// Braking starts at the first slowing over `ONSET_OVER` at least this share of the zone's peak:
 /// speed bled off before it is coasting. Relative, as a descent brakes far gentler than a kart.
 const ONSET_SHARE: f32 = 0.5;
@@ -61,6 +63,7 @@ pub fn braking_zones(lap: &[(f64, GPSFix)]) -> Vec<BrakingZone> {
     if braking {
         zones.push(zone(&lap[top..=low]));
     }
+    zones.retain(|z| z.peak_g >= MIN_PEAK_G);
     zones
 }
 
@@ -134,6 +137,8 @@ mod tests {
     fn steady_or_gently_slowing_laps_have_none() {
         assert!(zones(lap(|_| 15.0)).is_empty());
         assert!(zones(lap(|s| (20.0 - (s - 40.0) / 200.0) as f32)).is_empty()); // 2 m/s over the lap
+        // 25 down to 18 m/s at 0.5 m/s² (0.05 g): plenty lost, but to drag.
+        assert!(zones(lap(|s| (625.0 - (s - 40.0).max(0.0)).max(324.0).sqrt() as f32)).is_empty());
     }
 
     #[test]

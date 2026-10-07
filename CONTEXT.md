@@ -119,7 +119,7 @@ The lap raced against while recording (`timing::Reference`): the `Personal best`
 The time gap to the `Reference lap`, positive when behind. Live, it's the lap so far minus the reference's time at the same distance along the track (`Track::locate`); at each gate it's exact, from both laps' crossings. Also per lap and per sector.
 
 **Braking zone**:
-Where a lap slowed for a corner (`braking::BrakingZone`), from GPS speed alone: from a top speed, a drop of at least 3 m/s until speed picks up again, starting where slowing first reaches half the zone's peak (so coasting before it doesn't count, on a gentle descent as on a kart). Positions are distances past the start gate (`timing::along_lap`). Compared with the `Personal best`'s zone starting nearest, within 50 m. Derived, never stored.
+Where a lap slowed for a corner (`braking::BrakingZone`), from GPS speed alone: from a top speed, a drop of at least 3 m/s until speed picks up again, peaking at 0.1 g or more (gentler is drag or a slope: coasting), starting where slowing first reaches half the zone's peak (so coasting before it doesn't count, on a gentle descent as on a kart). Positions are distances past the start gate (`timing::along_lap`). Compared with the `Personal best`'s zone starting nearest, within 50 m. Derived, never stored.
 
 ## Implementation status (2026-09-24)
 
