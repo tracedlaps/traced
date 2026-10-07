@@ -175,7 +175,7 @@ fn Download() -> Element {
     rsx! {
         a { class: "apk", href: APK,
             svg { view_box: "0 0 24 24", path { d: "M12 3v12M7 10l5 5 5-5M5 20h14" } }
-            span { "Download the APK" small { "v0.8.0 beta · Android 8.0+" } }
+            span { "Download the APK" small { "v0.8.1 beta · Android 8.0+" } }
         }
     }
 }

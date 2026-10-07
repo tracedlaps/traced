@@ -1,5 +1,9 @@
 # Novidades
 
+## 0.8.1 - 2026-10-07
+
+- Já não aparecem ícones gigantes por instantes ao abrir o Traced.
+
 ## 0.8.0 - 2026-10-07
 
 - Veja onde travou em cada volta: os Resultados e o Histórico marcam cada zona de travagem no mapa da pista, com onde começou, a velocidade de entrada e de saída e o pico de g, comparadas com a travagem da sua melhor volta na mesma curva. Toque numa volta para a ver.

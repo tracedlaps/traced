@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1 - 2026-10-07
+
+- No more flash of oversized icons when Traced starts.
+
 ## 0.8.0 - 2026-10-07
 
 - See where you braked on each lap: Results and History mark every braking zone on the track map, with where it started, entry and exit speed and peak g, against your best lap's braking for the same corner. Tap a lap to see it.
