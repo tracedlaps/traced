@@ -53,8 +53,6 @@ enum Route {
     Live {},
 }
 
-const MAIN_CSS: Asset = asset!("/assets/main.css");
-
 fn main() {
     dioxus::launch(App);
 }
@@ -86,7 +84,13 @@ fn App() -> Element {
     let Onboarded(onboarded) = use_context_provider(Onboarded::load);
 
     rsx! {
-        document::Stylesheet { href: MAIN_CSS }
+        // Release inlines it: a linked sheet loads after first paint and flashes unstyled SVGs.
+        // Debug links it so `dx serve` hot-reloads CSS edits.
+        if cfg!(debug_assertions) {
+            document::Stylesheet { href: asset!("/assets/main.css") }
+        } else {
+            style { {include_str!("../assets/main.css")} }
+        }
         if onboarded() {
             Router::<Route> {}
         } else {

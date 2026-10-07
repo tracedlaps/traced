@@ -3,7 +3,6 @@ use dioxus::prelude::*;
 mod demo;
 
 const ICON: Asset = asset!("/assets/icon.svg");
-const MAIN_CSS: Asset = asset!("/assets/main.css");
 const FONTS: &str = "https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&display=swap";
 const ISSUES: &str = "https://github.com/tracedlaps/tracedlaps/issues";
 const APK: &str = "https://github.com/tracedlaps/tracedlaps/releases/latest/download/traced.apk";
@@ -34,7 +33,13 @@ fn App() -> Element {
         document::Title { "Traced · GPS lap timer for Android" }
         document::Link { rel: "icon", href: ICON }
         document::Link { rel: "stylesheet", href: FONTS }
-        document::Stylesheet { href: MAIN_CSS }
+        // Release inlines it: a linked sheet loads after first paint and flashes unstyled SVGs.
+        // Debug links it so `dx serve` hot-reloads CSS edits.
+        if cfg!(debug_assertions) {
+            document::Stylesheet { href: asset!("/assets/main.css") }
+        } else {
+            style { {include_str!("../assets/main.css")} }
+        }
 
         div { class: "wrap",
             header {
