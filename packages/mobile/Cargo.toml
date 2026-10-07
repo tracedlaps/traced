@@ -31,3 +31,5 @@ rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] 
 default = []
 mobile = ["dioxus/mobile"]
 desktop = ["dioxus/desktop"]
+# Google Play build: Play forbids self-updating, so no GitHub update check or installer.
+play = []

@@ -33,6 +33,9 @@ pub fn describe(error: String) -> String {
 
 /// The releases newer than this build, newest first, with their changes in `language` (or English).
 pub async fn check(language: String) -> Result<Vec<Release>, String> {
+    if cfg!(feature = "play") {
+        return Ok(vec![]);
+    }
     #[derive(Deserialize)]
     struct GitHubRelease {
         tag_name: String,
