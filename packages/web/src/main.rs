@@ -23,6 +23,15 @@ const STEPS: [(&str, &str); 4] = [
     ("Allow location on Start", "Traced asks for precise location the first time you record. It's only used while recording."),
 ];
 
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[layout(Layout)]
+        #[route("/")]
+        Home {},
+        #[route("/changelog")]
+        Changelog {},
+}
+
 fn main() {
     dioxus::launch(App);
 }
@@ -30,7 +39,6 @@ fn main() {
 #[component]
 fn App() -> Element {
     rsx! {
-        document::Title { "Traced · GPS lap timer for Android" }
         document::Link { rel: "icon", href: ICON }
         document::Link { rel: "stylesheet", href: FONTS }
         // Release inlines it: a linked sheet loads after first paint and flashes unstyled SVGs.
@@ -41,100 +49,122 @@ fn App() -> Element {
             style { {include_str!("../assets/main.css")} }
         }
 
+        Router::<Route> {}
+    }
+}
+
+#[component]
+fn Layout() -> Element {
+    rsx! {
         div { class: "wrap",
             header {
-                a { class: "brand", href: "#top", Logo {} "TRACED" }
+                Link { class: "brand", to: Route::Home {}, Logo {} "TRACED" }
                 nav {
-                    a { href: "#features", "Features" }
-                    a { href: "#install", "Install" }
-                    a { href: "#changelog", "Changelog" }
+                    a { href: "/#features", "Features" }
+                    a { href: "/#install", "Install" }
+                    Link { to: Route::Changelog {}, "Changelog" }
                 }
             }
-
-            div { class: "hero", id: "top",
-                div {
-                    p { class: "label", "GPS lap timer for Android · Open beta" }
-                    h1 { "Race your " em { "best lap." } " Every lap." }
-                    p { class: "lede",
-                        "Draw a circuit or a downhill run on the map, set your sectors, and go. Traced times every lap from your phone's GPS and shows "
-                        b { "live how far ahead or behind your best" }
-                        " you are."
-                    }
-                    div { class: "get",
-                        Download {}
-                        dl { class: "meta",
-                            dt { "Status" } dd { "Open beta, free to test" }
-                            dt { "Later" } dd { "One-time Pro unlock" }
-                            dt { "Languages" } dd { "English, Português" }
-                        }
-                    }
-                }
-                div { class: "device",
-                    demo::Phone {}
-                    p { class: "caption label", "The Live screen, lapping Mondercange" }
-                }
-            }
-
-            section { id: "features",
-                p { class: "label", "What it does" }
-                h2 { "Built for the stopwatch in your head" }
-                p { class: "intro", "Everything you'd want from a timing transponder, on the phone already in your pocket." }
-                dl { class: "specs",
-                    for (color, title, text) in FEATURES {
-                        div { class: "spec",
-                            dt { i { background: "var(--{color})" } "{title}" }
-                            dd { "{text}" }
-                        }
-                    }
-                }
-            }
-
-            section { id: "install",
-                div { class: "install",
-                    div {
-                        p { class: "label", "Installing" }
-                        h2 { "Not on the Play Store, yet" }
-                        p { class: "intro",
-                            "Traced ships as an APK. Android asks once before installing an app from outside the store. It's in beta, so expect rough edges: found a bug or missing something? "
-                            a { href: ISSUES, "Open an issue" } "."
-                        }
-                        Download {}
-                    }
-                    ol { class: "steps",
-                        for (title, text) in STEPS {
-                            li { div { b { "{title}" } span { "{text}" } } }
-                        }
-                    }
-                }
-            }
-
-            section { id: "changelog",
-                p { class: "label", "Changelog" }
-                h2 { "What's new" }
-                for entry in changelog::parse(changelog::EN) {
-                    div { class: "release",
-                        h3 { "v{entry.version}" small { "{entry.date}" } }
-                        ul {
-                            for change in entry.changes {
-                                li { "{change}" }
-                            }
-                        }
-                    }
-                }
-            }
-
-            section {
-                div { class: "local",
-                    div { class: "big", "Offline." br {} "Yours." }
-                    div {
-                        p { "Tracks and recordings live only on your phone. No account, no cloud, no tracking." }
-                        p { "Export a backup file whenever you want a copy, and restore it on a new phone." }
-                    }
-                }
-            }
-
+            Outlet::<Route> {}
             footer {
                 span { "Traced · made with Rust and Dioxus" }
+                Link { to: Route::Changelog {}, "Changelog" }
+            }
+        }
+    }
+}
+
+#[component]
+fn Home() -> Element {
+    // Arriving from another page at /#features: the browser looked for the anchor before it rendered.
+    use_effect(|| _ = document::eval("location.hash && document.querySelector(location.hash)?.scrollIntoView()"));
+    rsx! {
+        document::Title { "Traced · GPS lap timer for Android" }
+        div { class: "hero", id: "top",
+            div {
+                p { class: "label", "GPS lap timer for Android · Open beta" }
+                h1 { "Race your " em { "best lap." } " Every lap." }
+                p { class: "lede",
+                    "Draw a circuit or a downhill run on the map, set your sectors, and go. Traced times every lap from your phone's GPS and shows "
+                    b { "live how far ahead or behind your best" }
+                    " you are."
+                }
+                div { class: "get",
+                    Download {}
+                    dl { class: "meta",
+                        dt { "Status" } dd { "Open beta, free to test" }
+                        dt { "Later" } dd { "One-time Pro unlock" }
+                        dt { "Languages" } dd { "English, Português" }
+                    }
+                }
+            }
+            div { class: "device",
+                demo::Phone {}
+                p { class: "caption label", "The Live screen, lapping Mondercange" }
+            }
+        }
+
+        section { id: "features",
+            p { class: "label", "What it does" }
+            h2 { "Built for the stopwatch in your head" }
+            p { class: "intro", "Everything you'd want from a timing transponder, on the phone already in your pocket." }
+            dl { class: "specs",
+                for (color, title, text) in FEATURES {
+                    div { class: "spec",
+                        dt { i { background: "var(--{color})" } "{title}" }
+                        dd { "{text}" }
+                    }
+                }
+            }
+        }
+
+        section { id: "install",
+            div { class: "install",
+                div {
+                    p { class: "label", "Installing" }
+                    h2 { "Not on the Play Store, yet" }
+                    p { class: "intro",
+                        "Traced ships as an APK. Android asks once before installing an app from outside the store. It's in beta, so expect rough edges: found a bug or missing something? "
+                        a { href: ISSUES, "Open an issue" } "."
+                    }
+                    Download {}
+                }
+                ol { class: "steps",
+                    for (title, text) in STEPS {
+                        li { div { b { "{title}" } span { "{text}" } } }
+                    }
+                }
+            }
+        }
+
+        section {
+            div { class: "local",
+                div { class: "big", "Offline." br {} "Yours." }
+                div {
+                    p { "Tracks and recordings live only on your phone. No account, no cloud, no tracking." }
+                    p { "Export a backup file whenever you want a copy, and restore it on a new phone." }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn Changelog() -> Element {
+    rsx! {
+        document::Title { "Changelog · Traced" }
+        section {
+            p { class: "label", "Changelog" }
+            h2 { "What's new" }
+            for entry in changelog::parse(changelog::EN) {
+                div { class: "release",
+                    h3 { "v{entry.version}" small { "{entry.date}" } }
+                    ul {
+                        for change in entry.changes {
+                            li { "{change}" }
+                        }
+                    }
+                }
             }
         }
     }

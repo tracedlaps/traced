@@ -5,7 +5,7 @@ edition = "2021"
 license.workspace = true
 
 [dependencies]
-dioxus = { workspace = true }
+dioxus = { workspace = true, features = ["router"] }
 changelog = { workspace = true }
 gloo-timers = { version = "0.3", features = ["futures"] }
 
