@@ -158,6 +158,11 @@ pub fn delete_track(id: Uuid) -> Option<()> {
     with_store("delete track", |s| s.delete_track(id))
 }
 
+/// Times recording `id` against `track` instead. `None` if it couldn't.
+pub fn set_recording_track(id: Uuid, track: &Arc<Track>) -> Option<()> {
+    with_store("change recording's track", |s| s.set_recording_track(id, track))
+}
+
 /// Deletes recording `id`, with its fixes and samples. `None` if it couldn't.
 pub fn delete_recording(id: Uuid) -> Option<()> {
     with_store("delete recording", |s| s.delete_recording(id))

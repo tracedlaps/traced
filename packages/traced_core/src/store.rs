@@ -198,21 +198,38 @@ impl Store {
             })?
             .collect::<Result<Vec<_>, _>>()?;
         for (id, started_at) in recordings {
-            let uuid = Uuid::parse_str(&id)?;
-            let summary = RecordingSummary::replay(
-                DateTime::from_timestamp_millis(started_at).unwrap_or_default(),
-                self.fixes(uuid)?,
-                self.samples(uuid)?,
-                Some(track.clone()),
-            );
-            let completed = summary.session.map(|s| serde_json::to_string(&s.completed));
-            // Lap peaks follow the laps.
-            let g = summary.g.map(|g| serde_json::to_string(&g));
-            self.db.execute(
-                "UPDATE recordings SET completed = ?2, g = ?3 WHERE id = ?1",
-                params![id, completed.transpose()?, g.transpose()?],
-            )?;
+            self.replay_against(Uuid::parse_str(&id)?, started_at, track)?;
         }
+        Ok(())
+    }
+
+    /// Times recording `id` against `track` instead, from its fixes: when the wrong one was picked.
+    pub fn set_recording_track(&self, id: Uuid, track: &Arc<Track>) -> Result<(), StoreError> {
+        let tx = self.db.unchecked_transaction()?;
+        let started_at = tx.query_row(
+            "UPDATE recordings SET track_id = ?2 WHERE id = ?1 RETURNING started_at",
+            params![id.to_string(), track.uuid.to_string()],
+            |r| r.get(0),
+        )?;
+        self.replay_against(id, started_at, track)?;
+        Ok(tx.commit()?)
+    }
+
+    /// Re-derives recording `id`'s laps (and their g peaks) against `track`.
+    fn replay_against(&self, id: Uuid, started_at: i64, track: &Arc<Track>) -> Result<(), StoreError> {
+        let summary = RecordingSummary::replay(
+            DateTime::from_timestamp_millis(started_at).unwrap_or_default(),
+            self.fixes(id)?,
+            self.samples(id)?,
+            Some(track.clone()),
+        );
+        let completed = summary.session.map(|s| serde_json::to_string(&s.completed));
+        // Lap peaks follow the laps.
+        let g = summary.g.map(|g| serde_json::to_string(&g));
+        self.db.execute(
+            "UPDATE recordings SET completed = ?2, g = ?3 WHERE id = ?1",
+            params![id.to_string(), completed.transpose()?, g.transpose()?],
+        )?;
         Ok(())
     }
 
@@ -692,6 +709,20 @@ mod tests {
             save(&store, &r);
         }
         assert_eq!(store.last_alignment().unwrap(), aligned([0.0, 1.0, 0.0]));
+    }
+
+    #[test]
+    fn a_recording_moved_to_another_track_is_timed_on_it() {
+        let store = Store::open(":memory:").unwrap();
+        let (wrong, right) = (sprint("Wrong"), sprint("Right"));
+        [&wrong, &right].iter().for_each(|t| store.put_track(t).unwrap());
+        let id = save(&store, &summary(Some(&wrong.build().unwrap()), 100));
+        let right = Arc::new(right.build().unwrap());
+        store.set_recording_track(id, &right).unwrap();
+        let [r] = &store.recordings().unwrap()[..] else { panic!("one recording") };
+        let replayed = RecordingSummary::replay(r.started_at, store.fixes(id).unwrap(), store.samples(id).unwrap(), Some(right.clone()));
+        assert_eq!((&r.session, &r.g), (&replayed.session, &replayed.g));
+        assert_eq!(r.session.as_ref().map(|s| s.track_id), Some(right.uuid));
     }
 
     #[test]

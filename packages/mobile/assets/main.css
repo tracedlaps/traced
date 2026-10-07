@@ -143,6 +143,8 @@ small.interrupted { color: var(--accent); }
 .modes .button { padding: 10px; font-size: 1rem; }
 .form .field { display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
 .form .field input { padding: 12px; border: 2px solid var(--line); border-radius: 12px; background: none; color: var(--fg); font: inherit; }
+.track-pick { display: flex; gap: 12px; align-items: center; color: var(--muted); }
+.track-pick select { flex: 1; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); font: inherit; }
 .form .check { display: flex; gap: 8px; align-items: center; }
 /* Follow: a close-up that fades out towards the edges. */
 .track-map.follow { -webkit-mask-image: radial-gradient(closest-side, #000 65%, transparent); mask-image: radial-gradient(closest-side, #000 65%, transparent); }

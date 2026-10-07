@@ -58,6 +58,9 @@ pub fn SavedResults(id: Uuid) -> Element {
     let mut trim = use_signal(|| true);
     let mut confirm_delete = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
+    // Bumped when its track changes, to load it again.
+    let mut changed = use_signal(|| 0);
+    changed();
     let Some(r) = storage::recordings().into_iter().find(|r| r.id == id) else {
         return rsx! {
             main {
@@ -72,6 +75,28 @@ pub fn SavedResults(id: Uuid) -> Element {
         main {
             h1 { {track_name(&tracks.read(), r.session.as_ref())} }
             small { {when(r.started_at)} }
+            // Dev builds only: re-times a test recording made on the wrong track.
+            if cfg!(debug_assertions) {
+                label { class: "track-pick",
+                    {t!("recording-track")}
+                    select {
+                        disabled: ctx.replaying.read().is_some_and(|r| r == id),
+                        onchange: move |e| {
+                            let Some(t) = tracks.peek().iter().find(|t| t.uuid.to_string() == e.value()).cloned() else { return };
+                            match storage::set_recording_track(id, &t) {
+                                Some(()) => changed += 1,
+                                None => error.set(Some(t!("change-track-failed"))),
+                            }
+                        },
+                        if r.session.is_none() {
+                            option { value: "", selected: true, disabled: true, "—" }
+                        }
+                        for t in tracks.read().iter() {
+                            option { value: "{t.uuid}", selected: r.session.as_ref().is_some_and(|s| s.track_id == t.uuid), "{t.name}" }
+                        }
+                    }
+                }
+            }
             if r.interrupted {
                 small { class: "interrupted", {t!("interrupted-detail")} }
             }
