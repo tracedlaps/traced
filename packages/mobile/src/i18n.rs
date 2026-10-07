@@ -22,10 +22,13 @@ pub fn use_translations() {
 
 /// `at` in local time, month and day names in the chosen language.
 pub fn local_date(at: DateTime<Utc>, fmt: &str) -> String {
-    let locale = chrono::Locale::try_from(&*i18n().language().to_string().replace('-', "_"));
-    at.with_timezone(&Local)
-        .format_localized(fmt, locale.unwrap_or(chrono::Locale::en_US))
-        .to_string()
+    let lang = i18n().language();
+    // Settings' choices are bare languages ("pt"), which chrono only knows with a region
+    let locale = chrono::Locale::try_from(&*lang.to_string().replace('-', "_")).unwrap_or(match lang.language.as_str() {
+        "pt" => chrono::Locale::pt_PT,
+        _ => chrono::Locale::en_US,
+    });
+    at.with_timezone(&Local).format_localized(fmt, locale).to_string()
 }
 
 #[cfg(test)]
