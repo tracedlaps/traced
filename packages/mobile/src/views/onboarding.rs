@@ -1,4 +1,4 @@
-//! First run: what Traced does, then each permission it needs, explained before Android asks.
+//! First run: what Traced does, that it is for tracks, then each permission it needs, explained before Android asks.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -41,9 +41,17 @@ fn finish() {
 const SLIDES: [(&str, &str); 3] =
     [("welcome-speed", "welcome-speed-body"), ("welcome-laps", "welcome-laps-body"), ("welcome-editor", "welcome-editor-body")];
 
-/// A permission the welcome explains before Android asks for it.
+/// The safety notice's reasons (icon and text), also in Settings.
+pub const SAFETY: &[(&str, &str)] = &[
+    ("M5 21V4M5 4h11l-2 4 2 4H5", "safety-track"),
+    ("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M5.6 5.6l12.8 12.8", "safety-roads"),
+    ("M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z", "safety-responsibility"),
+];
+
+/// A page after the slides: the safety notice, then each permission explained before Android asks.
 #[derive(Clone, Copy, PartialEq)]
 enum Ask {
+    Safety,
     Location,
     Notifications,
 }
@@ -52,6 +60,7 @@ impl Ask {
     /// Its badge icon, title and reasons (icon and text).
     fn page(self) -> (&'static str, &'static str, &'static [(&'static str, &'static str)]) {
         match self {
+            Self::Safety => ("M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0M12 9v4M12 17h.01", "safety-title", SAFETY),
             Self::Location => (
                 "M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12zM12 6.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5",
                 "location-title",
@@ -74,20 +83,21 @@ impl Ask {
 
     async fn request(self, ctx: RecorderCtx) {
         match self {
+            Self::Safety => {}
             Self::Location => ctx.request_location().await,
             Self::Notifications => ctx.request_notifications().await,
         }
     }
 }
 
-/// The welcome pages, then each permission Traced still needs, explained.
+/// The welcome pages, the safety notice, then each permission Traced still needs, explained.
 #[component]
 pub fn Onboarding() -> Element {
     let ctx = use_context::<RecorderCtx>();
     let mut page = use_signal(|| 0usize);
     let asks = use_hook(|| {
         let location = (*ctx.permission.peek() == Some(Permission::Denied)).then_some(Ask::Location);
-        [location, ctx.needs_notifications().then_some(Ask::Notifications)].into_iter().flatten().collect::<Vec<_>>()
+        [Some(Ask::Safety), location, ctx.needs_notifications().then_some(Ask::Notifications)].into_iter().flatten().collect::<Vec<_>>()
     });
     let total = SLIDES.len() + asks.len();
     // Past the last page. Not finished from a handler: an async one's task belongs to this
@@ -111,8 +121,13 @@ pub fn Onboarding() -> Element {
                         }
                     }
                 }
-                button { onclick: move |_| async move { ask.request(ctx).await; page += 1 }, {t!("continue")} }
-                button { class: "link", onclick: move |_| page += 1, {t!("guide-skip")} }
+                button { onclick: move |_| async move { ask.request(ctx).await; page += 1 },
+                    {if ask == Ask::Safety { t!("understand") } else { t!("continue") }}
+                }
+                // The notice can't be skipped, only acknowledged.
+                if ask != Ask::Safety {
+                    button { class: "link", onclick: move |_| page += 1, {t!("guide-skip")} }
+                }
             }
         };
     }

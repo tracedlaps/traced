@@ -23,6 +23,14 @@ pub fn Settings() -> Element {
                     h2 { {t!("tutorial")} }
                     button { class: "button secondary", onclick: |_| onboarding::replay(), {t!("tutorial-replay")} }
                 }
+                section { class: "backup",
+                    h2 { {t!("safety-title")} }
+                    ul { class: "reasons",
+                        for &(icon, text) in onboarding::SAFETY {
+                            li { svg { view_box: "0 0 24 24", path { d: icon } } {t!(text)} }
+                        }
+                    }
+                }
                 Updates {}
                 // Debug builds only: none of this is for drivers.
                 if cfg!(all(debug_assertions, target_os = "android")) {
