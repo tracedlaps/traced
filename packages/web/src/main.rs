@@ -33,6 +33,8 @@ enum Route {
         Changelog {},
         #[route("/privacy")]
         Privacy {},
+        #[route("/terms")]
+        Terms {},
 }
 
 fn main() {
@@ -74,6 +76,7 @@ fn Layout() -> Element {
                 span { class: "links",
                     Link { to: Route::Changelog {}, "Changelog" }
                     Link { to: Route::Privacy {}, "Privacy" }
+                    Link { to: Route::Terms {}, "Terms" }
                     a { href: SUPPORT, "Support" }
                 }
             }
@@ -122,6 +125,10 @@ fn Home() -> Element {
                         dd { "{text}" }
                     }
                 }
+            }
+            p { class: "intro",
+                "For race tracks, karting circuits and other closed areas only. Never use Traced to time yourself on public roads. "
+                Link { to: Route::Terms {}, "Terms of use" } "."
             }
         }
 
@@ -231,6 +238,34 @@ fn Privacy() -> Element {
 
             h3 { "Changes" }
             p { "If this policy changes, the new version will be posted here with a new effective date." }
+        }
+    }
+}
+
+#[component]
+fn Terms() -> Element {
+    rsx! {
+        document::Title { "Terms of use · Traced" }
+        section { class: "policy",
+            p { class: "label", "Terms of use" }
+            h2 { "Track use only" }
+            p { class: "intro", "Effective 11 October 2026. These terms cover the Traced app. By using it, you accept them." }
+
+            h3 { "Where to use Traced" }
+            p { "Traced is made for race tracks, karting circuits and other closed areas where timed driving is allowed. Never use it to time yourself, or race anyone, on public roads. Obey traffic laws and the rules of the track, and keep your eyes on the road, not the phone: set it up before you drive and mount it securely." }
+
+            h3 { "Your responsibility" }
+            p { "You alone are responsible for how and where you use Traced, and for your safety and that of others. To the fullest extent the law allows, its makers accept no liability for misuse of the app, or for any accident, injury, damage, fine or loss that follows from using it." }
+
+            h3 { "No warranty" }
+            p { "Traced is free software under the GNU GPL, provided as is, without warranty of any kind. Times, speeds and G-forces come from your phone's GPS and sensors and can be inaccurate. Don't rely on them for safety, or where an official time is required." }
+
+            h3 { "Contact and changes" }
+            p {
+                "Questions: "
+                a { href: SUPPORT, "support@tracedlaps.com" }
+                ". If these terms change, the new version will be posted here with a new effective date."
+            }
         }
     }
 }
