@@ -10,6 +10,9 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash # with pipefail, unlike the default
     env:
       TAG: ${{ github.ref_name }}
       GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
@@ -29,8 +32,8 @@ jobs:
       - run: cargo binstall -y dioxus-cli@0.7.10
       - name: Android SDK
         run: |
-          "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager --install "build-tools;36.0.0" "ndk;30.0.16138531" >/dev/null
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16138531" >> "$GITHUB_ENV"
+          "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager --install "build-tools;36.0.0" "ndk;30.0.16248370"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
       - name: Build the signed APK
         env:
           TRACED_KEYSTORE: ${{ runner.temp }}/release.jks
