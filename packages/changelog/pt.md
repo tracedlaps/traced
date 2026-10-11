@@ -1,5 +1,9 @@
 # Novidades
 
+## 0.9.0 - 2026-10-11
+
+- Só para pista: um novo aviso lembra que o Traced é para autódromos e espaços fechados, nunca para a via pública. Aparece no primeiro arranque em novas instalações e está nas Definições.
+
 ## 0.8.3 - 2026-10-07
 
 - As datas aparecem agora em português quando escolhe Português nas Definições.

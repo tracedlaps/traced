@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.0 - 2026-10-11
+
+- Track use only: a new notice reminds you Traced is for race tracks and closed areas, never public roads. New installs show it on first start; you'll find it in Settings.
+
 ## 0.8.3 - 2026-10-07
 
 - Dates now show in Portuguese when you choose Português in Settings.
