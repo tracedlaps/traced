@@ -91,6 +91,7 @@ h2 { margin: 0 0 8px; font: 800 clamp(2rem, 4.5vw, 3rem)/1 var(--display); font-
 .spec dd { margin: 0; color: var(--muted); }
 
 .install { display: grid; grid-template-columns: 1fr 1.3fr; gap: 56px; align-items: start; }
+.intro.alt { margin: 20px 0 0; font-size: 0.9rem; }
 .steps { list-style: none; margin: 0; padding: 0; counter-reset: s; display: flex; flex-direction: column; }
 .steps li { counter-increment: s; display: grid; grid-template-columns: 48px 1fr; gap: 16px; padding-block: 18px; border-bottom: 1px solid var(--line); }
 .steps li:first-child { padding-top: 0; }

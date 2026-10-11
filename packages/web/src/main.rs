@@ -6,6 +6,7 @@ const ICON: Asset = asset!("/assets/icon.svg");
 const FONTS: &str = "https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&display=swap";
 const ISSUES: &str = "https://github.com/tracedlaps/tracedlaps/issues";
 const SUPPORT: &str = "mailto:support@tracedlaps.com";
+const JOIN: &str = "mailto:support@tracedlaps.com?subject=Traced%20beta%20tester&body=Hi%2C%20I%27d%20like%20to%20test%20Traced.%20My%20Google%20Play%20account%3A%20";
 const APK: &str = "https://github.com/tracedlaps/tracedlaps/releases/latest/download/traced.apk";
 
 const FEATURES: [(&str, &str, &str); 6] = [
@@ -18,10 +19,10 @@ const FEATURES: [(&str, &str, &str); 6] = [
 ];
 
 const STEPS: [(&str, &str); 4] = [
-    ("Download the APK on your phone", "Open this page on the phone itself and tap the button."),
-    ("Allow the install", "Android prompts to let your browser install apps. Allow it for this one install."),
-    ("Open Traced and pick a track", "Draw one in the Editor tab, or use the Speedometer to try it straight away."),
-    ("Allow location on Start", "Traced asks for precise location the first time you record. It's only used while recording."),
+    ("Email us your Google account", "Send the address you use on Google Play. We add it to the testers list."),
+    ("Open the invite on your phone", "We reply with the opt-in link. Tap \"Become a tester\"."),
+    ("Install from Google Play", "Same store, same updates. Traced arrives like any other app."),
+    ("Keep it for 14 days", "Google releases Traced to everyone once 12 testers have stayed opted in for 14 days."),
 ];
 
 #[derive(Routable, Clone, PartialEq)]
@@ -66,7 +67,7 @@ fn Layout() -> Element {
                 Link { class: "brand", to: Route::Home {}, Logo {} "TRACED" }
                 nav {
                     a { href: "/#features", "Features" }
-                    a { href: "/#install", "Install" }
+                    a { href: "/#install", "Join the beta" }
                     Link { to: Route::Changelog {}, "Changelog" }
                 }
             }
@@ -92,7 +93,7 @@ fn Home() -> Element {
         document::Title { "Traced · GPS lap timer for Android" }
         div { class: "hero", id: "top",
             div {
-                p { class: "label", "GPS lap timer for Android · Open beta" }
+                p { class: "label", "GPS lap timer for Android · Closed beta" }
                 h1 { "Race your " em { "best lap." } " Every lap." }
                 p { class: "lede",
                     "Draw a circuit or a downhill run on the map, set your sectors, and go. Traced times every lap from your phone's GPS and shows "
@@ -100,9 +101,9 @@ fn Home() -> Element {
                     " you are."
                 }
                 div { class: "get",
-                    Download {}
+                    Join {}
                     dl { class: "meta",
-                        dt { "Status" } dd { "Open beta, free to test" }
+                        dt { "Status" } dd { "Closed beta on Google Play" }
                         dt { "Later" } dd { "One-time Pro unlock" }
                         dt { "Languages" } dd { "English, Português" }
                     }
@@ -135,14 +136,18 @@ fn Home() -> Element {
         section { id: "install",
             div { class: "install",
                 div {
-                    p { class: "label", "Installing" }
-                    h2 { "Not on the Play Store, yet" }
+                    p { class: "label", "Closed beta" }
+                    h2 { "Help Traced reach the Play Store" }
                     p { class: "intro",
-                        "Traced ships as an APK. Android asks once before installing an app from outside the store. It's in beta, so expect rough edges: found a bug or missing something? "
+                        "Traced is in closed testing on Google Play and needs 12 testers before it can go public. Free to test, but expect rough edges: found a bug or missing something? "
                         a { href: ISSUES, "Open an issue" } " or "
                         a { href: SUPPORT, "email us" } "."
                     }
-                    Download {}
+                    Join {}
+                    p { class: "intro alt",
+                        "Rather skip the store? "
+                        a { href: APK, "Download the APK" } " instead."
+                    }
                 }
                 ol { class: "steps",
                     for (title, text) in STEPS {
@@ -271,11 +276,11 @@ fn Terms() -> Element {
 }
 
 #[component]
-fn Download() -> Element {
+fn Join() -> Element {
     rsx! {
-        a { class: "apk", href: APK,
-            svg { view_box: "0 0 24 24", path { d: "M12 3v12M7 10l5 5 5-5M5 20h14" } }
-            span { "Download the APK" small { "v0.8.3 beta · Android 8.0+" } }
+        a { class: "apk", href: JOIN,
+            svg { view_box: "0 0 24 24", path { d: "M3 6h18v12H3zM3 6l9 7 9-7" } }
+            span { "Join the beta" small { "Email us · Google Play · Android 8.0+" } }
         }
     }
 }
