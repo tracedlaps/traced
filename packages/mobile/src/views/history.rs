@@ -13,7 +13,7 @@ use uuid::Uuid;
 use super::{
     lap_time,
     onboarding::Empty,
-    shell::HISTORY,
+    icons::HISTORY,
     map::{Map, View},
     results::Report,
 };

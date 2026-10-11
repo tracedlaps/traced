@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 
-use super::{backup::Backup, onboarding, update::Updates};
+use super::{backup::Backup, icons::Icon, onboarding, update::Updates};
 use crate::{
     prefs::{Choice, Language, MapView, Theme},
     recorder::RecorderCtx,
@@ -27,7 +27,7 @@ pub fn Settings() -> Element {
                     h2 { {t!("safety-title")} }
                     ul { class: "reasons",
                         for &(icon, text) in onboarding::SAFETY {
-                            li { svg { view_box: "0 0 24 24", path { d: icon } } {t!(text)} }
+                            li { Icon { d: icon } {t!(text)} }
                         }
                     }
                 }

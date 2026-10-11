@@ -5,9 +5,9 @@ use dioxus_i18n::t;
 use traced_core::{timing::best_lap, track::Track};
 
 use super::{
-    gps_status, lap_time,
+    gps_status, icons, lap_time,
     onboarding::Empty,
-    refusal, shell, timed_m,
+    refusal, timed_m,
     track_map::{Layout, TrackSvg},
 };
 use crate::{gps::wire::Permission, recorder::RecorderCtx, storage, units::Units, Route};
@@ -17,13 +17,19 @@ pub fn Tracks() -> Element {
     let tracks = use_context::<Signal<Vec<Arc<Track>>>>();
     let mut selected = use_signal(|| 0);
     let recordings = storage::recordings();
-    let thumbs = use_memo(move || tracks.read().iter().map(|t| Layout::new(t)).collect::<Vec<_>>());
+    let thumbs = use_memo(move || {
+        tracks
+            .read()
+            .iter()
+            .map(|t| Layout::new(t))
+            .collect::<Vec<_>>()
+    });
 
     if tracks.read().is_empty() {
         return rsx! {
             main {
                 h1 { {t!("tracks")} }
-                Empty { icon: shell::TRACKS, title: t!("no-tracks"), body: t!("no-tracks-body"),
+                Empty { icon: icons::FLAG, title: t!("no-tracks"), body: t!("no-tracks-body"),
                     Link { class: "button", to: Route::Import {}, {t!("add-track")} }
                 }
             }
@@ -94,21 +100,6 @@ fn StartPanel(track: Option<usize>) -> Element {
     let mut refused = use_signal(|| None::<String>);
 
     rsx! {
-        section { class: "gps",
-            p { {gps_status(*ctx.status.read())} }
-            match *ctx.permission.read() {
-                Some(Permission::Denied) => rsx! { small { {t!("permission-ask")} } },
-                Some(Permission::Granted) => rsx! { small { {t!("permission-granted")} } },
-                Some(Permission::Blocked) => rsx! {
-                    small { {t!("permission-blocked")} }
-                    button { onclick: move |_| ctx.open_settings(), {t!("open-settings")} }
-                },
-                None => rsx! {},
-            }
-            if let Some(why) = refused() {
-                p { class: "error", "{why}" }
-            }
-        }
         button {
             // The shell's bar leads back to a recording in progress.
             disabled: ctx.recording.read().is_some() || ctx.capture.read().is_some(),

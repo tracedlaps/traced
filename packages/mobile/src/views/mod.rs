@@ -3,6 +3,7 @@ mod capture;
 mod editor;
 mod guide;
 mod history;
+mod icons;
 mod lap_chart;
 mod live;
 mod map;
