@@ -8,9 +8,13 @@ cd "$(dirname "$0")"
 args=() aab=
 for a in "$@"; do [[ $a == --aab ]] && aab=1 || args+=("$a"); done
 [[ $aab ]] && args+=(--release --features play)
+start=$(mktemp)
 dx build --android "${args[@]}"
 [[ " ${args[*]} " == *" --release "* ]] && profile=release || profile=debug
 app=$(realpath ../../target/dx/mobile/$profile/android/app)
+# Gradle packs every ABI in jniLibs: drop libraries left by earlier builds for other targets
+find "$app/app/src/main/jniLibs" -name '*.so' ! -newer "$start" -delete && rm "$start"
+compgen -G "$app/app/src/main/jniLibs/*/*.so" >/dev/null || { echo "dx built no native library" >&2; exit 1; }
 cp -r android/res/. "$app/app/src/main/res/"
 if [[ $profile == debug ]]; then
     (cd "$app" && ./gradlew -q assembleDebug)
