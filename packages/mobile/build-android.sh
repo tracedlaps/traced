@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # dx can't set the Android icon, app name or theme (DioxusLabs/dioxus#3685), so overlay android/res onto
 # the gradle project it generates and repackage. Args go to `dx build --android`.
-# --release also signs with ~/.config/traced/release.jks (password in release.pass beside it).
+# --release also signs with $TRACED_KEYSTORE (default ~/.config/traced/release.jks), password in
+# $TRACED_KEYSTORE_PASS (default: release.pass beside the keystore).
 # --aab builds a signed release bundle for Google Play instead, with the `play` feature (no self-updater).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -31,20 +32,22 @@ sed -i "s/versionCode = .*/versionCode = $((maj * 10000 + min * 100 + pat))/" "$
 syms=$app/app/build/outputs/native-debug-symbols.zip
 rm -rf "$app/symbols" "$syms" && cp -r "$app/app/src/main/jniLibs" "$app/symbols"
 "${ANDROID_NDK_HOME:-$NDK_HOME}"/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip --strip-unneeded "$app"/app/src/main/jniLibs/*/*.so
-key=~/.config/traced
+ks=${TRACED_KEYSTORE:-$HOME/.config/traced/release.jks}
+: "${TRACED_KEYSTORE_PASS:=$(<"$(dirname "$ks")/release.pass")}"
+export TRACED_KEYSTORE_PASS
 if [[ $aab ]]; then
     (cd "$app/symbols" && zip -qr "$syms" .) && echo "$syms"
     # Play rejects REQUEST_INSTALL_PACKAGES without an installer use case; dx regenerates this each build
     sed -i '/REQUEST_INSTALL_PACKAGES/d' "$app/plugins/storageplugin/src/main/AndroidManifest.xml"
     (cd "$app" && ./gradlew -q bundleRelease)
     out=$app/app/build/outputs/bundle/release
-    jarsigner -keystore "$key/release.jks" -storepass:file "$key/release.pass" \
+    jarsigner -keystore "$ks" -storepass:env TRACED_KEYSTORE_PASS \
         -signedjar "$out/traced.aab" "$out/app-release.aab" traced >/dev/null
     echo "$out/traced.aab"
     exit
 fi
 (cd "$app" && ./gradlew -q assembleRelease)
 out=$app/app/build/outputs/apk/release
-"$ANDROID_HOME"/build-tools/36.0.0/apksigner sign --ks "$key/release.jks" --ks-pass "file:$key/release.pass" \
+"$ANDROID_HOME"/build-tools/36.0.0/apksigner sign --ks "$ks" --ks-pass env:TRACED_KEYSTORE_PASS \
     --out "$out/traced.apk" "$out/app-release-unsigned.apk"
 echo "$out/traced.apk"

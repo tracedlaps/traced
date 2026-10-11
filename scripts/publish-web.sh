@@ -4,7 +4,7 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 pub=${PUBLIC_REPO:-$root/../tracedlaps}
 
-[ -d "$pub/.git" ] || git clone git@github.com:tracedlaps/tracedlaps.git "$pub"
+[ -d "$pub/.git" ] || git clone "${PUBLIC_REPO_URL:-git@github.com:tracedlaps/tracedlaps.git}" "$pub"
 git -C "$pub" ls-remote -q --exit-code origin main >/dev/null && git -C "$pub" pull --ff-only
 
 cd "$root" && dx bundle --package web --platform web --release

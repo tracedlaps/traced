@@ -1,0 +1,58 @@
+name: Release
+
+# Pushing a vX.Y.Z tag builds the signed APK, publishes tracedlaps.com (so the app finds the notes),
+# then releases the APK on the public tracedlaps/tracedlaps repo, where the app's updater and the
+# site's download link look for it.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches the app version
+        run: test "v$(grep -m1 '^version' packages/mobile/Cargo.toml | cut -d'"' -f2)" = "$TAG"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: cargo-bins/cargo-binstall@main
+      - run: cargo binstall -y dioxus-cli@0.7.10
+      - name: Android SDK
+        run: |
+          "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager --install "build-tools;36.0.0" "ndk;30.0.16138531" >/dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16138531" >> "$GITHUB_ENV"
+      - name: Build the signed APK
+        env:
+          TRACED_KEYSTORE: ${{ runner.temp }}/release.jks
+          TRACED_KEYSTORE_BASE64: ${{ secrets.TRACED_KEYSTORE_BASE64 }}
+          TRACED_KEYSTORE_PASS: ${{ secrets.TRACED_KEYSTORE_PASS }}
+        run: |
+          base64 -d <<< "$TRACED_KEYSTORE_BASE64" > "$TRACED_KEYSTORE"
+          apk=$(packages/mobile/build-android.sh --release --target aarch64-linux-android | tail -1)
+          tools=$ANDROID_HOME/build-tools/36.0.0
+          "$tools"/aapt2 dump badging "$apk" | head -1
+          "$tools"/apksigner verify --print-certs "$apk" | grep -q 'CN=Traced, O=tracedlabs'
+          echo "APK=$apk" >> "$GITHUB_ENV"
+      - name: Publish tracedlaps.com
+        env:
+          PUBLIC_REPO: ${{ runner.temp }}/tracedlaps
+          PUBLIC_REPO_URL: https://x-access-token:${{ secrets.PUBLIC_REPO_TOKEN }}@github.com/tracedlaps/tracedlaps.git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          scripts/publish-web.sh
+      - name: Release the APK
+        run: |
+          awk -v v="${TAG#v}" '/^## /{p=$2==v; next} p' packages/changelog/en.md > notes.md
+          gh release create "$TAG" "$APK#traced.apk" --repo tracedlaps/tracedlaps \
+            --title "Traced $TAG beta" --notes-file notes.md
