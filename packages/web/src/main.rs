@@ -4,7 +4,8 @@ mod demo;
 
 const ICON: Asset = asset!("/assets/icon.svg");
 const FONTS: &str = "https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=IBM+Plex+Mono:wght@400;500&display=swap";
-const ISSUES: &str = "https://github.com/tracedlaps/tracedlaps/issues";
+const SOURCE: &str = "https://github.com/tracedlaps/traced";
+const ISSUES: &str = "https://github.com/tracedlaps/traced/issues";
 const SUPPORT: &str = "mailto:support@tracedlaps.com";
 const JOIN: &str = "mailto:support@tracedlaps.com?subject=Traced%20beta%20tester&body=Hi%2C%20I%27d%20like%20to%20test%20Traced.%20My%20Google%20Play%20account%3A%20";
 const APK: &str = "https://github.com/tracedlaps/tracedlaps/releases/latest/download/traced.apk";
@@ -69,6 +70,7 @@ fn Layout() -> Element {
                     a { href: "/#features", "Features" }
                     a { href: "/#install", "Join the beta" }
                     Link { to: Route::Changelog {}, "Changelog" }
+                    a { href: SOURCE, "GitHub" }
                 }
             }
             Outlet::<Route> {}
@@ -78,6 +80,7 @@ fn Layout() -> Element {
                     Link { to: Route::Changelog {}, "Changelog" }
                     Link { to: Route::Privacy {}, "Privacy" }
                     Link { to: Route::Terms {}, "Terms" }
+                    a { href: SOURCE, "GitHub" }
                     a { href: SUPPORT, "Support" }
                 }
             }
@@ -163,6 +166,7 @@ fn Home() -> Element {
                 div {
                     p { "Tracks and recordings live only on your phone. No account, no cloud, no tracking." }
                     p { "Export a backup file whenever you want a copy, and restore it on a new phone." }
+                    p { "Open source under the GPL: " a { href: SOURCE, "read the code on GitHub" } "." }
                 }
             }
         }
@@ -263,7 +267,11 @@ fn Terms() -> Element {
             p { "You alone are responsible for how and where you use Traced, and for your safety and that of others. To the fullest extent the law allows, its makers accept no liability for misuse of the app, or for any accident, injury, damage, fine or loss that follows from using it." }
 
             h3 { "No warranty" }
-            p { "Traced is free software under the GNU GPL, provided as is, without warranty of any kind. Times, speeds and G-forces come from your phone's GPS and sensors and can be inaccurate. Don't rely on them for safety, or where an official time is required." }
+            p {
+                "Traced is free software under the "
+                a { href: "{SOURCE}/blob/main/LICENSE", "GNU GPL" }
+                ", provided as is, without warranty of any kind. Times, speeds and G-forces come from your phone's GPS and sensors and can be inaccurate. Don't rely on them for safety, or where an official time is required."
+            }
 
             h3 { "Contact and changes" }
             p {
